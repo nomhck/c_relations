@@ -1,0 +1,1330 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EPCタスク依存関係グラフエディタ — Phase 0 モック</title>
+
+  <!-- React Flow v12 のスタイル（バージョン完全固定・§10 Phase 0-1） -->
+  <link rel="stylesheet" href="https://esm.sh/@xyflow/react@12.11.2/dist/style.css" />
+
+  <!-- importmap: react/react-dom/@xyflow/react/zustand/@dagrejs/dagre/htm を esm.sh から解決。
+       全て「バージョン完全固定（メジャー浮動禁止）」。?external で React 実体を単一化して重複を防ぐ。 -->
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18.3.1",
+      "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+      "react-dom": "https://esm.sh/react-dom@18.3.1",
+      "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?external=react",
+      "@xyflow/react": "https://esm.sh/@xyflow/react@12.11.2?external=react,react-dom",
+      "zustand": "https://esm.sh/zustand@4.5.7?external=react",
+      "zustand/vanilla": "https://esm.sh/zustand@4.5.7/vanilla",
+      "@dagrejs/dagre": "https://esm.sh/@dagrejs/dagre@1.1.8",
+      "htm": "https://esm.sh/htm@3.1.1"
+    }
+  }
+  </script>
+
+  <style>
+    :root {
+      --disc-E: #2563eb; --disc-P: #d97706; --disc-C: #059669; --disc-OTHER: #6b7280;
+      --panel-bg: #ffffff; --panel-border: #e2e8f0; --ink: #0f172a; --muted: #64748b;
+      --header-bg: #0f172a; --header-ink: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    html, body, #root { height: 100%; margin: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+           color: var(--ink); font-size: 13px; background: #f1f5f9; }
+    .app { display: flex; flex-direction: column; height: 100%; }
+
+    /* ヘッダ / ツールバー */
+    .header { background: var(--header-bg); color: var(--header-ink); display: flex; align-items: center;
+              gap: 8px; padding: 6px 10px; flex-wrap: wrap; }
+    .header .proj { font-weight: 700; margin-right: 6px; }
+    .header .spacer { flex: 1; }
+    .breadcrumb { background: #1e293b; color: #cbd5e1; padding: 3px 10px; font-size: 12px; }
+    .breadcrumb .crumb { cursor: pointer; }
+    .breadcrumb .crumb:hover { text-decoration: underline; color: #fff; }
+    button, select, input { font: inherit; }
+    .btn { background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 6px;
+           padding: 4px 9px; cursor: pointer; }
+    .btn:hover { background: #475569; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .btn.on { background: #0ea5e9; border-color: #0ea5e9; color: #fff; }
+    .savebadge { font-size: 12px; padding: 3px 8px; border-radius: 10px; }
+    .savebadge.saved { color: #86efac; } .savebadge.dirty { color: #fde047; }
+
+    /* 本体レイアウト */
+    .body { flex: 1; display: flex; min-height: 0; }
+    .panel { background: var(--panel-bg); border-right: 1px solid var(--panel-border);
+             width: 250px; overflow: auto; padding: 10px; }
+    .panel.right { border-right: none; border-left: 1px solid var(--panel-border); width: 290px; }
+    .panel h3 { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: .04em; }
+    .panel h3:first-child { margin-top: 0; }
+    .row { display: flex; gap: 6px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
+    .field { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
+    .field label { color: var(--muted); font-size: 11px; }
+    .field input, .field select, .field textarea { border: 1px solid var(--panel-border); border-radius: 5px; padding: 4px 6px; }
+    .chip { border: 1px solid var(--panel-border); border-radius: 12px; padding: 2px 8px; cursor: pointer; background: #f8fafc; }
+    .chip.on { background: #dbeafe; border-color: #93c5fd; color: #1e3a8a; }
+    .stat { font-size: 12px; color: var(--muted); }
+    .stat b { color: var(--ink); }
+    .canvas-area { flex: 1; position: relative; min-width: 0; }
+    .hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); z-index: 5;
+            background: rgba(15,23,42,.8); color: #e2e8f0; padding: 4px 10px; border-radius: 8px; font-size: 11px; pointer-events: none; }
+
+    /* フォーカスバー（§2.9） */
+    .focusbar { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 6;
+                background: #1e293b; color: #e2e8f0; border-radius: 8px; padding: 5px 10px; display: flex; gap: 8px; align-items: center; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+
+    /* トースト（§2.4 循環経路表示） */
+    .toasts { position: fixed; right: 16px; bottom: 16px; z-index: 50; display: flex; flex-direction: column; gap: 8px; }
+    .toast { background: #0f172a; color: #f1f5f9; padding: 9px 13px; border-radius: 8px; max-width: 420px;
+             box-shadow: 0 6px 20px rgba(0,0,0,.3); border-left: 4px solid #38bdf8; font-size: 12px; }
+    .toast.err { border-left-color: #ef4444; }
+
+    /* ノード（§2.11） */
+    .task-node { position: relative; width: 186px; min-height: 56px; background: #fff; border: 1.5px solid #cbd5e1;
+                 border-radius: 8px; padding: 7px 9px 7px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .task-node.sel { box-shadow: 0 0 0 2px #2563eb; }
+    .task-node.dim { opacity: 0.15; }
+    .task-node.outside { border-style: dashed; opacity: 0.6; }
+    .task-node.origin { border-width: 2.5px; box-shadow: 0 4px 12px rgba(0,0,0,.22); }
+    .task-node.st-IN_PROGRESS { border-color: #3b82f6; }
+    .task-node.st-DONE { background: #f1f5f9; border-color: #94a3b8; }
+    .task-node.st-ON_HOLD { border-color: #eab308; }
+    .disc-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 8px 0 0 8px; }
+    .task-name { font-weight: 600; line-height: 1.2; word-break: break-word; }
+    .task-meta { color: var(--muted); font-size: 11px; margin-top: 3px; }
+    .task-name-input { width: 100%; border: 1px solid #2563eb; border-radius: 4px; padding: 2px 4px; font-weight: 600; }
+    .progress { position: absolute; left: 4px; right: 4px; bottom: 3px; height: 3px; background: #e2e8f0; border-radius: 2px; }
+    .progress > i { display: block; height: 100%; background: #3b82f6; border-radius: 2px; }
+    .badge-done { position: absolute; top: 4px; right: 6px; color: #16a34a; font-weight: 700; }
+    .lod-node { width: 40px; height: 20px; border-radius: 3px; }
+
+    .ms-node { position: relative; width: 26px; height: 26px; background: #fbbf24; border: 1.5px solid #b45309;
+               transform: rotate(45deg); border-radius: 3px; }
+    .ms-node.sel { box-shadow: 0 0 0 2px #2563eb; }
+    .ms-wrap { position: relative; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
+    .ms-label { position: absolute; top: 32px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 10px; color: var(--muted); }
+
+    .agg-node { position: relative; width: 190px; background: #f8fafc; border: 2px dashed #94a3b8; border-radius: 10px; padding: 8px 10px; cursor: pointer; }
+    .agg-node.dim { opacity: 0.2; }
+    .agg-node .agg-title { font-weight: 700; }
+    .agg-node .agg-sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .agg-bars { display: flex; height: 6px; margin-top: 6px; border-radius: 3px; overflow: hidden; background: #e2e8f0; }
+    .agg-bars > span { display: block; }
+    .agg-badges { position: absolute; top: 6px; right: 8px; font-size: 11px; }
+
+    .react-flow__handle { width: 9px; height: 9px; background: #64748b; border: 2px solid #fff; }
+    .react-flow__handle:hover { background: #2563eb; }
+    .depitem { display: flex; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px dashed #eef2f7; }
+    .depitem .name { flex: 1; cursor: pointer; color: #1e40af; }
+    .depitem .name:hover { text-decoration: underline; }
+    .x { cursor: pointer; color: #94a3b8; } .x:hover { color: #ef4444; }
+    .legend span { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; font-size: 11px; }
+    .legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    .meta-line { font-size: 11px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="module">
+    import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from "react";
+    import { createRoot } from "react-dom/client";
+    import { create } from "zustand";
+    import {
+      ReactFlow, ReactFlowProvider, Background, MiniMap, Controls,
+      Handle, Position, useStore as useRFStore, useReactFlow,
+      applyNodeChanges, applyEdgeChanges,
+    } from "@xyflow/react";
+    import * as dagreNS from "@dagrejs/dagre";
+    import htm from "htm";
+
+    const html = htm.bind(React.createElement);
+    const dagre = dagreNS.default || dagreNS;
+
+    // ========================================================================
+    // domain（UI非依存の純関数群）— /tmp で bun 単体検証済みのものを埋め込み。
+    // Phase 1 では epc-task-graph/app/src/domain/ へそのまま切り出す（§4.2）。
+    // ========================================================================
+    export const DISCIPLINES = ["E", "P", "C", "OTHER"];
+    export const STATUSES = ["NOT_STARTED", "IN_PROGRESS", "DONE", "ON_HOLD"];
+
+    export function newId() {
+      return (globalThis.crypto && crypto.randomUUID) ? crypto.randomUUID()
+        : "id-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+    export function nowISO() { return new Date().toISOString(); }
+
+    export function mulberry32(seed) {
+      let a = seed >>> 0;
+      return function () {
+        a |= 0; a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    export function makeTask(p = {}, by = "私") {
+      const ts = nowISO();
+      return {
+        id: p.id || newId(),
+        name: p.name != null ? p.name : "新規タスク",
+        wbsCode: p.wbsCode != null ? p.wbsCode : "",
+        discipline: p.discipline || "OTHER",
+        isMilestone: !!p.isMilestone,
+        durationDays: p.isMilestone ? 0 : (p.durationDays != null ? p.durationDays : 5),
+        status: p.status || "NOT_STARTED",
+        progress: p.progress != null ? p.progress : 0,
+        assignee: p.assignee != null ? p.assignee : "",
+        constraintType: p.constraintType || "ASAP",
+        constraintDate: p.constraintDate != null ? p.constraintDate : null,
+        notes: p.notes || "",
+        position: p.position || { x: 0, y: 0 },
+        rev: p.rev != null ? p.rev : 1,
+        createdAt: p.createdAt || ts,
+        updatedAt: p.updatedAt || ts,
+        updatedBy: p.updatedBy || by,
+      };
+    }
+    export function makeDep(predecessorId, successorId, p = {}, by = "私") {
+      return {
+        id: p.id || newId(),
+        predecessorId, successorId,
+        type: p.type || "FS",
+        lagDays: p.lagDays != null ? p.lagDays : 0,
+        rev: p.rev != null ? p.rev : 1,
+        updatedAt: p.updatedAt || nowISO(),
+        updatedBy: p.updatedBy || by,
+      };
+    }
+    export function emptyDoc(name = "新規プロジェクト") {
+      const ts = nowISO();
+      return {
+        schemaVersion: 1,
+        project: {
+          id: newId(), name, description: "", calendarId: "cal-default",
+          dataDate: ts.slice(0, 10), createdAt: ts, updatedAt: ts, version: 1,
+        },
+        viewState: { collapsedWbs: [], expandLevel: 2 },
+        savedViews: [],
+        calendars: [{ id: "cal-default", name: "週休2日", workingDays: [1, 2, 3, 4, 5], holidays: [] }],
+        tasks: [],
+        dependencies: [],
+      };
+    }
+
+    export function buildAdjacency(deps) {
+      const succ = new Map(); const pred = new Map();
+      for (const d of deps) {
+        if (!succ.has(d.predecessorId)) succ.set(d.predecessorId, new Set());
+        if (!pred.has(d.successorId)) pred.set(d.successorId, new Set());
+        succ.get(d.predecessorId).add(d.successorId);
+        pred.get(d.successorId).add(d.predecessorId);
+      }
+      return { succ, pred };
+    }
+    export function ancestorsOf(sourceId, pred) {
+      const anc = new Set(); const q = [sourceId];
+      while (q.length) {
+        const cur = q.pop(); const ps = pred.get(cur);
+        if (!ps) continue;
+        for (const p of ps) if (!anc.has(p)) { anc.add(p); q.push(p); }
+      }
+      return anc;
+    }
+    export function findCyclePath(sourceId, targetId, succ) {
+      const prevOf = new Map(); const q = [targetId]; const seen = new Set([targetId]);
+      while (q.length) {
+        const cur = q.shift();
+        if (cur === sourceId) {
+          const path = []; let c = sourceId;
+          while (c !== undefined) { path.push(c); c = prevOf.get(c); }
+          return path.reverse();
+        }
+        const ss = succ.get(cur);
+        if (!ss) continue;
+        for (const s of ss) if (!seen.has(s)) { seen.add(s); prevOf.set(s, cur); q.push(s); }
+      }
+      return null;
+    }
+    export function canConnect(sourceId, targetId, deps) {
+      if (sourceId === targetId) return { ok: false, reason: "self", path: null };
+      for (const d of deps) {
+        if (d.predecessorId === sourceId && d.successorId === targetId)
+          return { ok: false, reason: "duplicate", path: null };
+      }
+      const { succ, pred } = buildAdjacency(deps);
+      const anc = ancestorsOf(sourceId, pred);
+      if (anc.has(targetId)) return { ok: false, reason: "cycle", path: findCyclePath(sourceId, targetId, succ) };
+      return { ok: true, reason: null, path: null };
+    }
+    export function topoSort(tasks, deps) {
+      const indeg = new Map();
+      for (const t of tasks) indeg.set(t.id, 0);
+      const { succ } = buildAdjacency(deps);
+      for (const d of deps) if (indeg.has(d.successorId)) indeg.set(d.successorId, indeg.get(d.successorId) + 1);
+      const q = [];
+      for (const [id, dg] of indeg) if (dg === 0) q.push(id);
+      const order = [];
+      while (q.length) {
+        const cur = q.shift(); order.push(cur);
+        const ss = succ.get(cur);
+        if (!ss) continue;
+        for (const s of ss) { indeg.set(s, indeg.get(s) - 1); if (indeg.get(s) === 0) q.push(s); }
+      }
+      const ok = order.length === tasks.length;
+      return { ok, order, hasCycle: !ok };
+    }
+
+    export function isWbsPrefix(prefix, code) {
+      if (!prefix) return false;
+      return code === prefix || code.startsWith(prefix + ".");
+    }
+    export function collapsedForLevel(tasks, level) {
+      const set = new Set();
+      for (const t of tasks) {
+        const segs = (t.wbsCode || "").split(".").filter(Boolean);
+        if (segs.length > level) set.add(segs.slice(0, level).join("."));
+      }
+      return [...set];
+    }
+    export function allTopPrefixes(tasks) {
+      const set = new Set();
+      for (const t of tasks) {
+        const segs = (t.wbsCode || "").split(".").filter(Boolean);
+        if (segs.length >= 1) set.add(segs[0]);
+      }
+      return [...set];
+    }
+    export function wbsPath(code) {
+      const segs = (code || "").split(".").filter(Boolean);
+      const out = [];
+      for (let i = 0; i < segs.length; i++) out.push(segs.slice(0, i + 1).join("."));
+      return out;
+    }
+
+    export function isFilterActive(f) {
+      if (!f) return false;
+      return !!((f.wbsPrefixes && f.wbsPrefixes.length) || (f.disciplines && f.disciplines.length) ||
+        (f.assignees && f.assignees.length) || (f.statuses && f.statuses.length) ||
+        f.milestonesOnly || f.criticalOnly || (f.text && f.text.trim()));
+    }
+    export function matchesFilter(t, f, me) {
+      if (!f) return true;
+      if (f.wbsPrefixes && f.wbsPrefixes.length &&
+          !f.wbsPrefixes.some((p) => isWbsPrefix(p, t.wbsCode) || t.wbsCode === p)) return false;
+      if (f.disciplines && f.disciplines.length && !f.disciplines.includes(t.discipline)) return false;
+      if (f.assignees && f.assignees.length) {
+        const wanted = f.assignees.map((a) => (a === "@me" ? (me || "") : a));
+        if (!wanted.includes(t.assignee)) return false;
+      }
+      if (f.statuses && f.statuses.length && !f.statuses.includes(t.status)) return false;
+      if (f.milestonesOnly && !t.isMilestone) return false;
+      if (f.criticalOnly) return false; // CPM未実装（Phase 0）
+      if (f.text && f.text.trim()) {
+        const q = f.text.trim().toLowerCase();
+        if (!((t.name || "").toLowerCase().includes(q) || (t.notes || "").toLowerCase().includes(q))) return false;
+      }
+      return true;
+    }
+
+    export function neighborhood(originId, succ, pred, up, down) {
+      const set = new Set([originId]); const directPred = new Set(); const directSucc = new Set();
+      let frontier = [originId];
+      for (let lvl = 0; lvl < up; lvl++) {
+        const next = [];
+        for (const cur of frontier) {
+          const ps = pred.get(cur); if (!ps) continue;
+          for (const p of ps) { if (lvl === 0) directPred.add(p); if (!set.has(p)) { set.add(p); next.push(p); } }
+        }
+        frontier = next;
+      }
+      frontier = [originId];
+      for (let lvl = 0; lvl < down; lvl++) {
+        const next = [];
+        for (const cur of frontier) {
+          const ss = succ.get(cur); if (!ss) continue;
+          for (const s of ss) { if (lvl === 0) directSucc.add(s); if (!set.has(s)) { set.add(s); next.push(s); } }
+        }
+        frontier = next;
+      }
+      return { set, directPred, directSucc };
+    }
+
+    // ---- 表示パイプライン（§2.6）フィルタ判定 → WBS折り畳み → 近傍フォーカス ----
+    export function deriveVisibleGraph(tasks, deps, viewSpec) {
+      const filter = (viewSpec && viewSpec.filter) || {};
+      const displayMode = (viewSpec && viewSpec.displayMode) || "DIM";
+      const collapsedWbs = (viewSpec && viewSpec.collapsedWbs) || [];
+      const focus = (viewSpec && viewSpec.focus) || null;
+      const me = (viewSpec && viewSpec.me) || "";
+
+      const taskById = new Map();
+      for (const t of tasks) taskById.set(t.id, t);
+      const { succ, pred } = buildAdjacency(deps);
+
+      const active = isFilterActive(filter);
+      const matchSet = new Set();
+      if (active) for (const t of tasks) if (matchesFilter(t, filter, me)) matchSet.add(t.id);
+
+      let nb = null;
+      if (focus && focus.taskId && taskById.has(focus.taskId)) {
+        nb = neighborhood(focus.taskId, succ, pred, focus.up != null ? focus.up : 2, focus.down != null ? focus.down : 2);
+      }
+      const isoRemove = active && displayMode === "ISOLATE" && !nb;
+
+      const cands = [];
+      for (const t of tasks) {
+        if (nb) {
+          if (!nb.set.has(t.id)) continue;
+          cands.push({ task: t, dim: false, outside: active && !matchSet.has(t.id),
+            isOrigin: t.id === focus.taskId, directPred: nb.directPred.has(t.id), directSucc: nb.directSucc.has(t.id) });
+        } else if (isoRemove) {
+          if (!matchSet.has(t.id)) continue;
+          cands.push({ task: t, dim: false, outside: false });
+        } else {
+          cands.push({ task: t, dim: active && displayMode === "DIM" && !matchSet.has(t.id), outside: false });
+        }
+      }
+      const candIds = new Set(cands.map((c) => c.task.id));
+
+      let effCollapsed = collapsedWbs;
+      if (isoRemove) effCollapsed = [];
+      // フォーカス中は近傍タスクを含むWBS枝を自動展開（近傍を実タスクとして見せる、§2.9）。
+      // 深さ境界より先で折り畳み内へ続く経路は、下の continuation 集約ノードで「◯件が内部に続く」として表示。
+      if (nb) {
+        const nbTasks = cands.map((c) => c.task);
+        effCollapsed = collapsedWbs.filter((p) => !nbTasks.some((t) => isWbsPrefix(p, t.wbsCode)));
+      }
+      const collapsedSorted = [...new Set(effCollapsed)].filter(Boolean).sort((a, b) => a.length - b.length);
+      const repOf = (task) => {
+        for (const p of collapsedSorted) if (isWbsPrefix(p, task.wbsCode)) return "wbs::" + p;
+        return task.id;
+      };
+
+      const nodeMap = new Map(); const aggMembers = new Map();
+      for (const c of cands) {
+        const rep = repOf(c.task);
+        if (rep.startsWith("wbs::")) {
+          if (!aggMembers.has(rep)) aggMembers.set(rep, []);
+          aggMembers.get(rep).push(c);
+        } else {
+          nodeMap.set(rep, { kind: "task", id: c.task.id, task: c.task, position: c.task.position,
+            dim: c.dim, outside: c.outside, isOrigin: !!c.isOrigin, directPred: !!c.directPred, directSucc: !!c.directSucc });
+        }
+      }
+      for (const [aggId, members] of aggMembers) {
+        const prefix = aggId.slice(5);
+        let sx = 0, sy = 0, sp = 0, hasMs = false;
+        const disc = { E: 0, P: 0, C: 0, OTHER: 0 };
+        for (const m of members) {
+          sx += m.task.position.x; sy += m.task.position.y; sp += m.task.progress;
+          disc[m.task.discipline] = (disc[m.task.discipline] || 0) + 1;
+          if (m.task.isMilestone) hasMs = true;
+        }
+        const n = members.length;
+        nodeMap.set(aggId, { kind: "aggregate", id: aggId, prefix, memberIds: members.map((m) => m.task.id),
+          position: { x: sx / n, y: sy / n }, count: n, disc, avgProgress: Math.round(sp / n),
+          hasMilestone: hasMs, hasCritical: false, dim: members.every((m) => m.dim) });
+      }
+
+      const edgeMap = new Map();
+      for (const d of deps) {
+        if (!candIds.has(d.predecessorId) || !candIds.has(d.successorId)) continue;
+        const a = repOf(taskById.get(d.predecessorId));
+        const b = repOf(taskById.get(d.successorId));
+        if (a === b) continue;
+        if (!nodeMap.has(a) || !nodeMap.has(b)) continue;
+        const key = a + "->" + b;
+        const isAgg = a.startsWith("wbs::") || b.startsWith("wbs::");
+        let e = edgeMap.get(key);
+        if (!e) { e = { id: "e::" + key, source: a, target: b, aggregate: isAgg, count: 0, highlight: false, realId: d.id }; edgeMap.set(key, e); }
+        e.count++;
+        if (nb && (d.predecessorId === focus.taskId || d.successorId === focus.taskId)) e.highlight = true;
+      }
+
+      // フォーカスの continuation 集約（§2.9「折り畳み先への継続がバッジで見える」）:
+      // 近傍の1歩外（深さ境界の先）にある先行/後続を、WBS上位プレフィックス単位で集約し点線エッジ＋件数で表示。
+      if (nb) {
+        const level2 = (code) => { const seg = (code || "").split(".").filter(Boolean); return seg.length >= 2 ? seg.slice(0, 2).join(".") : (code || "（ルート）"); };
+        const repOfId = (id) => { const t = taskById.get(id); return t ? repOf(t) : id; };
+        const groups = new Map();
+        for (const c of cands) {
+          const id = c.task.id;
+          const repA = repOfId(id);
+          if (!nodeMap.has(repA)) continue;
+          const addCont = (otherId, isSucc) => {
+            if (nb.set.has(otherId)) return;
+            const ot = taskById.get(otherId); if (!ot) return;
+            const key = "cont::" + level2(ot.wbsCode);
+            if (!groups.has(key)) groups.set(key, { prefix: level2(ot.wbsCode), tasks: new Set(), out: new Set(), in: new Set(), sx: 0, sy: 0 });
+            const g = groups.get(key);
+            if (!g.tasks.has(otherId)) { g.tasks.add(otherId); g.sx += ot.position.x; g.sy += ot.position.y; }
+            if (isSucc) g.out.add(repA); else g.in.add(repA);
+          };
+          for (const s of (succ.get(id) || [])) addCont(s, true);
+          for (const p of (pred.get(id) || [])) addCont(p, false);
+        }
+        for (const [key, g] of groups) {
+          const n = g.tasks.size;
+          nodeMap.set(key, { kind: "aggregate", id: key, prefix: g.prefix, continuation: true, memberIds: [...g.tasks],
+            position: { x: g.sx / n, y: g.sy / n }, count: n, disc: { E: 0, P: 0, C: 0, OTHER: 0 }, avgProgress: 0, hasMilestone: false, hasCritical: false, dim: false });
+          for (const rep of g.out) edgeMap.set(rep + "->" + key, { id: "e::" + rep + "->" + key, source: rep, target: key, aggregate: true, continuation: true, count: n, highlight: false });
+          for (const rep of g.in) edgeMap.set(key + "->" + rep, { id: "e::" + key + "->" + rep, source: key, target: rep, aggregate: true, continuation: true, count: n, highlight: false });
+        }
+      }
+
+      const visibleNodes = [...nodeMap.values()];
+      const visibleEdges = [...edgeMap.values()];
+      return { visibleNodes, visibleEdges, stats: {
+        total: tasks.length, visible: visibleNodes.length, aggregates: aggMembers.size,
+        matched: active ? matchSet.size : tasks.length, edges: visibleEdges.length } };
+    }
+
+    // ---- 4,000ノードデモ生成（§10）----
+    export function seedDemo(opts = {}) {
+      const target = opts.count || 4000;
+      const density = opts.density != null ? opts.density : 1.5;
+      const rnd = mulberry32(opts.seed || 12345);
+      const assignees = ["山田", "佐藤", "鈴木", "田中", "高橋", "伊藤", "渡辺", "中村", "小林", "加藤"];
+      const disc3 = ["E", "P", "C"];
+      const discName = { E: "設計", P: "調達", C: "施工" };
+      const doc = emptyDoc("○○プラント建設（デモ4000）");
+      const L1 = 6, L2 = 5, L3 = 5;
+      const leaves = [];
+      for (let a = 1; a <= L1; a++) for (let b = 1; b <= L2; b++) for (let c = 1; c <= L3; c++) leaves.push(`${a}.${b}.${c}`);
+      const perLeaf = Math.ceil(target / leaves.length);
+      const tasks = []; let idx = 0;
+      for (let li = 0; li < leaves.length && tasks.length < target; li++) {
+        const wbs = leaves[li];
+        for (let k = 0; k < perLeaf && tasks.length < target; k++) {
+          const d = disc3[k % 3];
+          const isMs = k > 0 && k % 13 === 0;
+          const st = STATUSES[Math.floor(rnd() * 4)];
+          tasks.push(makeTask({
+            name: `${discName[d]}-${wbs}-${k + 1}`, wbsCode: wbs, discipline: d, isMilestone: isMs,
+            durationDays: isMs ? 0 : 1 + Math.floor(rnd() * 20),
+            status: st, progress: st === "DONE" ? 100 : st === "IN_PROGRESS" ? Math.floor(rnd() * 90) : 0,
+            assignee: assignees[idx % assignees.length],
+            position: { x: (li % 25) * 260 + (k % 6) * 40, y: Math.floor(li / 25) * 900 + k * 70 },
+          }, "デモ生成"));
+          idx++;
+        }
+      }
+      const deps = []; const byLeaf = new Map();
+      tasks.forEach((t, i) => { if (!byLeaf.has(t.wbsCode)) byLeaf.set(t.wbsCode, []); byLeaf.get(t.wbsCode).push(i); });
+      const targetEdges = Math.round(tasks.length * density);
+      for (const arr of byLeaf.values()) for (let i = 0; i + 1 < arr.length; i++) deps.push(makeDep(tasks[arr[i]].id, tasks[arr[i + 1]].id, {}, "デモ生成"));
+      let guard = 0; const seen = new Set(deps.map((d) => d.predecessorId + ">" + d.successorId));
+      while (deps.length < targetEdges && guard < targetEdges * 6) {
+        guard++;
+        const i = Math.floor(rnd() * (tasks.length - 1));
+        const j = Math.min(tasks.length - 1, i + 1 + Math.floor(rnd() * 8));
+        if (j <= i) continue;
+        const key = tasks[i].id + ">" + tasks[j].id;
+        if (seen.has(key)) continue;
+        seen.add(key); deps.push(makeDep(tasks[i].id, tasks[j].id, {}, "デモ生成"));
+      }
+      doc.tasks = tasks; doc.dependencies = deps;
+      doc.viewState = { collapsedWbs: collapsedForLevel(tasks, 2), expandLevel: 2 };
+      return doc;
+    }
+
+    export function validateDoc(doc) {
+      const errors = [];
+      if (!doc || typeof doc !== "object") return { ok: false, errors: ["ルートがオブジェクトではありません"] };
+      const tasks = doc.tasks || [], deps = doc.dependencies || [];
+      const ids = new Set();
+      tasks.forEach((t, i) => {
+        if (ids.has(t.id)) errors.push(`tasks[${i}] ID重複: ${t.id}`);
+        ids.add(t.id);
+        if (t.isMilestone && t.durationDays !== 0) errors.push(`tasks[${i}] milestoneはduration=0が必要`);
+        if (t.progress < 0 || t.progress > 100) errors.push(`tasks[${i}] progressが0-100外`);
+      });
+      const depIds = new Set();
+      deps.forEach((d, i) => {
+        if (depIds.has(d.id)) errors.push(`dependencies[${i}] ID重複: ${d.id}`);
+        depIds.add(d.id);
+        if (!ids.has(d.predecessorId)) errors.push(`dependencies[${i}] predecessor不明`);
+        if (!ids.has(d.successorId)) errors.push(`dependencies[${i}] successor不明`);
+        if (d.predecessorId === d.successorId) errors.push(`dependencies[${i}] 自己ループ`);
+      });
+      const pairSeen = new Set();
+      deps.forEach((d, i) => { const k = d.predecessorId + ">" + d.successorId; if (pairSeen.has(k)) errors.push(`dependencies[${i}] 重複エッジ`); pairSeen.add(k); });
+      if (!topoSort(tasks, deps).ok) errors.push("DAG違反: 循環が存在します");
+      return { ok: errors.length === 0, errors };
+    }
+
+    // ========================================================================
+    // layout（dagre）— 表示中サブグラフ（同期）と全体（Blob URL Worker、§2.5）
+    // ========================================================================
+    function dagreLayout(nodes, edges) {
+      const g = new dagre.graphlib.Graph();
+      g.setGraph({ rankdir: "LR", ranksep: 80, nodesep: 40 });
+      g.setDefaultEdgeLabel(() => ({}));
+      for (const n of nodes) g.setNode(n.id, { width: 186, height: 64 });
+      for (const e of edges) if (g.hasNode(e.source) && g.hasNode(e.target)) g.setEdge(e.source, e.target);
+      dagre.layout(g);
+      const pos = {};
+      g.nodes().forEach((id) => { const nn = g.node(id); pos[id] = { x: nn.x - 93, y: nn.y - 32 }; });
+      return pos;
+    }
+
+    let _worker = null;
+    function getFullWorker() {
+      if (_worker) return _worker;
+      const code = `
+        import * as ns from "https://esm.sh/@dagrejs/dagre@1.1.8";
+        const dagre = ns.default || ns;
+        self.onmessage = (e) => {
+          const { nodes, edges } = e.data;
+          const g = new dagre.graphlib.Graph();
+          g.setGraph({ rankdir:'LR', ranksep:80, nodesep:40 });
+          g.setDefaultEdgeLabel(()=>({}));
+          for (const n of nodes) g.setNode(n, { width:186, height:64 });
+          for (const ed of edges) if (g.hasNode(ed[0]) && g.hasNode(ed[1])) g.setEdge(ed[0], ed[1]);
+          dagre.layout(g);
+          const pos = {};
+          g.nodes().forEach((id) => { const nn = g.node(id); pos[id] = { x: nn.x-93, y: nn.y-32 }; });
+          self.postMessage({ pos });
+        };`;
+      _worker = new Worker(URL.createObjectURL(new Blob([code], { type: "text/javascript" })), { type: "module" });
+      return _worker;
+    }
+
+    // ========================================================================
+    // store（zustand）— domain を包み、Undo/永続化/表示状態を管理
+    // ========================================================================
+    const LS_KEY = "epc-mock-doc-v1";
+    const LS_ME = "epc-mock-me";
+
+    function starterDoc() {
+      const doc = emptyDoc("サンプルプロジェクト");
+      const a = makeTask({ name: "基本設計", wbsCode: "1.1", discipline: "E", status: "IN_PROGRESS", progress: 40, assignee: "山田", position: { x: 60, y: 120 } });
+      const b = makeTask({ name: "資材調達", wbsCode: "1.2", discipline: "P", assignee: "佐藤", position: { x: 320, y: 120 } });
+      const c = makeTask({ name: "据付工事", wbsCode: "1.3", discipline: "C", assignee: "鈴木", position: { x: 580, y: 120 } });
+      const m = makeTask({ name: "完成", wbsCode: "1.3", isMilestone: true, assignee: "鈴木", position: { x: 840, y: 130 } });
+      doc.tasks = [a, b, c, m];
+      doc.dependencies = [makeDep(a.id, b.id), makeDep(b.id, c.id), makeDep(c.id, m.id)];
+      return doc;
+    }
+    function loadInitial() {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (raw) { const d = JSON.parse(raw); if (d && d.tasks) return d; }
+      } catch (e) {}
+      return starterDoc();
+    }
+
+    let saveTimer = null;
+    function scheduleSave(getState) {
+      if (saveTimer) clearTimeout(saveTimer);
+      getState()._set({ saveStatus: "dirty" });
+      saveTimer = setTimeout(() => {
+        const { doc } = getState();
+        try { localStorage.setItem(LS_KEY, JSON.stringify(doc)); getState()._set({ saveStatus: "saved" }); }
+        catch (e) { getState()._set({ saveStatus: "dirty" }); getState().showToast("localStorage保存に失敗（容量超過の可能性）。エクスポートを推奨", true); }
+      }, 500);
+    }
+
+    const useApp = create((set, get) => {
+      const commit = (partialDoc, { history = true } = {}) => {
+        const { doc, past } = get();
+        const snap = { tasks: doc.tasks, dependencies: doc.dependencies };
+        const newDoc = { ...doc, ...partialDoc };
+        set({ doc: newDoc, past: history ? [...past, snap].slice(-20) : past, future: history ? [] : get().future });
+        scheduleSave(get);
+      };
+      const meInit = (() => { try { return localStorage.getItem(LS_ME) || "私"; } catch (e) { return "私"; } })();
+      const doc0 = loadInitial();
+      return {
+        doc: doc0,
+        me: meInit,
+        viewSpec: { filter: {}, displayMode: "DIM",
+          collapsedWbs: (doc0.viewState && doc0.viewState.collapsedWbs) || [],
+          focus: null, me: meInit },
+        expandLevel: (doc0.viewState && doc0.viewState.expandLevel) || 2,
+        selection: { taskId: null, edgeId: null, aggId: null },
+        editingId: null,
+        toast: [],
+        saveStatus: "saved",
+        past: [], future: [],
+        runners: {},
+
+        _set: set,
+        _fit: (delay = 160) => setTimeout(() => { const f = get().runners.fitView; if (f) f(); }, delay),
+        setRunner: (name, fn) => set((s) => ({ runners: { ...s.runners, [name]: fn } })),
+        setMe: (me) => { try { localStorage.setItem(LS_ME, me); } catch (e) {} set((s) => ({ me, viewSpec: { ...s.viewSpec, me } })); },
+
+        showToast: (msg, err = false) => {
+          const id = newId();
+          set((s) => ({ toast: [...s.toast, { id, msg, err }] }));
+          setTimeout(() => set((s) => ({ toast: s.toast.filter((t) => t.id !== id) })), 5200);
+        },
+
+        // ---- タスク/依存 CRUD ----
+        addTask: (p = {}, { edit = true } = {}) => {
+          const t = makeTask({ ...p, updatedBy: get().me, wbsCode: p.wbsCode != null ? p.wbsCode : (currentWbsContext(get()) || "") }, get().me);
+          commit({ tasks: [...get().doc.tasks, t] });
+          set({ selection: { taskId: t.id, edgeId: null, aggId: null }, editingId: edit ? t.id : null });
+          return t;
+        },
+        updateTask: (id, patch) => {
+          const tasks = get().doc.tasks.map((t) => t.id === id
+            ? { ...t, ...patch, rev: t.rev + 1, updatedAt: nowISO(), updatedBy: get().me } : t);
+          commit({ tasks });
+        },
+        setPosition: (id, pos) => {
+          const tasks = get().doc.tasks.map((t) => t.id === id ? { ...t, position: pos } : t);
+          commit({ tasks });
+        },
+        applyPositions: (map) => {
+          const tasks = get().doc.tasks.map((t) => map[t.id] ? { ...t, position: map[t.id] } : t);
+          commit({ tasks });
+        },
+        deleteTasks: (ids) => {
+          const idset = new Set(ids);
+          const tasks = get().doc.tasks.filter((t) => !idset.has(t.id));
+          const dependencies = get().doc.dependencies.filter((d) => !idset.has(d.predecessorId) && !idset.has(d.successorId));
+          commit({ tasks, dependencies });
+          const s = get();
+          if (idset.has(s.selection.taskId)) set({ selection: { taskId: null, edgeId: null, aggId: null } });
+          if (ids.length > 1) s.showToast(ids.length + "件削除しました（Cmd+Z で元に戻せます）");
+        },
+        addDependencyChecked: (source, target) => {
+          const s = get();
+          const chk = canConnect(source, target, s.doc.dependencies);
+          if (!chk.ok) { s.showToast(explainReject(chk, s), true); return false; }
+          commit({ dependencies: [...s.doc.dependencies, makeDep(source, target, {}, s.me)] });
+          return true;
+        },
+        deleteDeps: (ids) => {
+          const idset = new Set(ids);
+          commit({ dependencies: get().doc.dependencies.filter((d) => !idset.has(d.id)) });
+        },
+        createSuccessor: (sourceId) => {
+          const s = get();
+          const src = s.doc.tasks.find((t) => t.id === sourceId);
+          if (!src) return;
+          const pos = { x: src.position.x + 220, y: src.position.y };
+          const t = makeTask({ wbsCode: src.wbsCode, discipline: src.discipline, position: pos, updatedBy: s.me }, s.me);
+          commit({ tasks: [...s.doc.tasks, t], dependencies: [...s.doc.dependencies, makeDep(sourceId, t.id, {}, s.me)] });
+          set({ selection: { taskId: t.id, edgeId: null, aggId: null }, editingId: t.id });
+        },
+
+        // ---- 表示状態（Undo対象外）----
+        setEditing: (id) => set({ editingId: id }),
+        setSelection: (sel) => set({ selection: { taskId: null, edgeId: null, aggId: null, ...sel } }),
+        setFilter: (patch) => set((s) => ({ viewSpec: { ...s.viewSpec, filter: { ...s.viewSpec.filter, ...patch } } })),
+        clearFilter: () => set((s) => ({ viewSpec: { ...s.viewSpec, filter: {} } })),
+        setDisplayMode: (m) => { set((s) => ({ viewSpec: { ...s.viewSpec, displayMode: m } })); if (m === "ISOLATE") get()._fit(); },
+        toggleArrayFilter: (key, val) => set((s) => {
+          const cur = s.viewSpec.filter[key] || [];
+          const next = cur.includes(val) ? cur.filter((x) => x !== val) : [...cur, val];
+          return { viewSpec: { ...s.viewSpec, filter: { ...s.viewSpec.filter, [key]: next } } };
+        }),
+        setExpandLevel: (n) => set((s) => {
+          const collapsedWbs = collapsedForLevel(s.doc.tasks, n);
+          persistView(get, { collapsedWbs, expandLevel: n });
+          return { expandLevel: n, viewSpec: { ...s.viewSpec, collapsedWbs } };
+        }),
+        collapseAll: () => set((s) => {
+          const collapsedWbs = allTopPrefixes(s.doc.tasks);
+          persistView(get, { collapsedWbs, expandLevel: 1 });
+          return { expandLevel: 1, viewSpec: { ...s.viewSpec, collapsedWbs } };
+        }),
+        expandAggregate: (aggId) => set((s) => {
+          const prefix = aggId.startsWith("wbs::") ? aggId.slice(5) : aggId;
+          const collapsedWbs = s.viewSpec.collapsedWbs.filter((p) => p !== prefix);
+          persistView(get, { collapsedWbs });
+          return { viewSpec: { ...s.viewSpec, collapsedWbs }, selection: { taskId: null, edgeId: null, aggId: null } };
+        }),
+        toggleCollapse: (prefix) => set((s) => {
+          const has = s.viewSpec.collapsedWbs.includes(prefix);
+          const collapsedWbs = has ? s.viewSpec.collapsedWbs.filter((p) => p !== prefix) : [...s.viewSpec.collapsedWbs, prefix];
+          persistView(get, { collapsedWbs });
+          return { viewSpec: { ...s.viewSpec, collapsedWbs } };
+        }),
+        toggleFocus: (taskId) => { let enabled = false; set((s) => {
+          const cur = s.viewSpec.focus;
+          if (cur && cur.taskId === taskId) return { viewSpec: { ...s.viewSpec, focus: null } };
+          enabled = true;
+          return { viewSpec: { ...s.viewSpec, focus: { taskId, up: 2, down: 2 } } };
+        }); if (enabled) get()._fit(); },
+        clearFocus: () => set((s) => ({ viewSpec: { ...s.viewSpec, focus: null } })),
+        incFocusDepth: (delta) => set((s) => {
+          if (!s.viewSpec.focus) return {};
+          const f = s.viewSpec.focus;
+          const up = Math.max(1, (f.up || 2) + delta), down = Math.max(1, (f.down || 2) + delta);
+          return { viewSpec: { ...s.viewSpec, focus: { ...f, up, down } } };
+        }),
+        escape: () => set((s) => {
+          if (s.viewSpec.focus) return { viewSpec: { ...s.viewSpec, focus: null } };
+          if (s.selection.taskId || s.selection.edgeId || s.selection.aggId) return { selection: { taskId: null, edgeId: null, aggId: null } };
+          return {};
+        }),
+        quickMyTasks: () => { set((s) => ({ viewSpec: { ...s.viewSpec, displayMode: "ISOLATE", focus: null, filter: { assignees: ["@me"] } } })); get()._fit(); },
+
+        // ---- Undo / Redo ----
+        undo: () => { const { past, future, doc } = get(); if (!past.length) return;
+          const prev = past[past.length - 1];
+          set({ doc: { ...doc, tasks: prev.tasks, dependencies: prev.dependencies },
+            past: past.slice(0, -1), future: [{ tasks: doc.tasks, dependencies: doc.dependencies }, ...future].slice(0, 20) });
+          scheduleSave(get); },
+        redo: () => { const { past, future, doc } = get(); if (!future.length) return;
+          const nxt = future[0];
+          set({ doc: { ...doc, tasks: nxt.tasks, dependencies: nxt.dependencies },
+            future: future.slice(1), past: [...past, { tasks: doc.tasks, dependencies: doc.dependencies }].slice(-20) });
+          scheduleSave(get); },
+
+        // ---- ドキュメント差替え ----
+        loadDoc: (doc) => { set({ doc, past: [], future: [], selection: { taskId: null, edgeId: null, aggId: null }, editingId: null,
+          viewSpec: { filter: {}, displayMode: "DIM", collapsedWbs: (doc.viewState && doc.viewState.collapsedWbs) || [], focus: null, me: get().me },
+          expandLevel: (doc.viewState && doc.viewState.expandLevel) || 2 });
+          scheduleSave(get); },
+        generateDemo: () => { const t0 = performance.now();
+          const doc = seedDemo({ count: 4000, density: 1.5 });
+          get().loadDoc(doc);
+          get()._fit(200);
+          get().showToast(`4,000ノードデモを生成しました（tasks=${doc.tasks.length} / deps=${doc.dependencies.length} / ${(performance.now() - t0).toFixed(0)}ms）`);
+        },
+
+        // ---- 全体整列（Worker）----
+        layoutAll: () => {
+          const s = get();
+          s.showToast("全体整列を実行中…（Web Workerで非同期。UIはブロックしません）");
+          try {
+            const w = getFullWorker();
+            const nodes = s.doc.tasks.map((t) => t.id);
+            const edges = s.doc.dependencies.map((d) => [d.predecessorId, d.successorId]);
+            w.onmessage = (e) => {
+              const map = {};
+              for (const [id, p] of Object.entries(e.data.pos)) map[id] = p;
+              get().applyPositions(map);
+              get().showToast("全体整列が完了しました（左→右 DAGレイアウト）");
+              if (get().runners.fitView) get().runners.fitView();
+            };
+            w.onerror = () => layoutAllFallback(get);
+            w.postMessage({ nodes, edges });
+          } catch (e) { layoutAllFallback(get); }
+        },
+      };
+    });
+
+    function currentWbsContext(state) {
+      const selId = state.selection.taskId;
+      if (selId) { const t = state.doc.tasks.find((x) => x.id === selId); if (t) return t.wbsCode; }
+      return "";
+    }
+    function persistView(get, patch) {
+      const { doc } = get();
+      const viewState = { ...doc.viewState, ...patch };
+      get()._set({ doc: { ...doc, viewState } });
+      scheduleSave(get);
+    }
+    function explainReject(chk, state) {
+      if (chk.reason === "self") return "自己ループは作成できません";
+      if (chk.reason === "duplicate") return "同じ依存が既に存在します";
+      if (chk.reason === "cycle") {
+        const names = (chk.path || []).map((id) => nameOf(state, id));
+        const shown = names.length > 6 ? [...names.slice(0, 3), "…", ...names.slice(-2)] : names;
+        return "循環依存になるため接続できません（" + shown.join(" → ") + "）";
+      }
+      return "接続できません";
+    }
+    function nameOf(state, id) { const t = state.doc.tasks.find((x) => x.id === id); return t ? t.name : id.slice(0, 6); }
+    function layoutAllFallback(get) {
+      const s = get();
+      const pos = dagreLayout(s.doc.tasks.map((t) => ({ id: t.id })), s.doc.dependencies.map((d) => ({ source: d.predecessorId, target: d.successorId })));
+      s.applyPositions(pos);
+      s.showToast("全体整列が完了しました（Worker不可のためメインスレッド実行）");
+      if (get().runners.fitView) get().runners.fitView();
+    }
+
+    // ========================================================================
+    // adapters — domain の visibleNodes/Edges を React Flow の nodes/edges へ（§4.2 隔離点）
+    // ========================================================================
+    const DISC_COLOR = { E: "#2563eb", P: "#d97706", C: "#059669", OTHER: "#6b7280" };
+    function toRFNodes(vnodes) {
+      return vnodes.map((n) => ({
+        id: n.id,
+        type: n.kind === "aggregate" ? "aggregate" : (n.task && n.task.isMilestone ? "milestone" : "task"),
+        position: n.position,
+        data: { n },
+        deletable: n.kind !== "aggregate",
+        draggable: true,
+      }));
+    }
+    function toRFEdges(vedges) {
+      return vedges.map((e) => ({
+        id: e.id, source: e.source, target: e.target, type: "smoothstep",
+        deletable: !e.aggregate, data: { realId: e.realId, aggregate: e.aggregate },
+        label: e.aggregate && e.count > 1 ? String(e.count) : undefined,
+        style: e.highlight ? { stroke: "#dc2626", strokeWidth: 2.4 }
+          : e.aggregate ? { stroke: "#94a3b8", strokeDasharray: "6 4" }
+          : { stroke: "#64748b" },
+      }));
+    }
+
+    // ========================================================================
+    // React コンポーネント（htm、JSX不使用）
+    // ========================================================================
+    const TaskNode = memo(function TaskNode({ id, data }) {
+      const n = data.n; const t = n.task;
+      const zoom = useRFStore((s) => s.transform[2]);
+      const editing = useApp((s) => s.editingId === id);
+      const selected = useApp((s) => s.selection.taskId === id);
+      const lod = zoom < 0.4;
+      const color = DISC_COLOR[t.discipline] || DISC_COLOR.OTHER;
+      if (lod && !editing) {
+        return html`<div class="lod-node" style=${{ background: color, opacity: n.dim ? 0.2 : (n.outside ? 0.5 : 1) }}>
+          <${Handle} type="target" position=${Position.Left} />
+          <${Handle} type="source" position=${Position.Right} />
+        </div>`;
+      }
+      const cls = ["task-node", "st-" + t.status, n.dim ? "dim" : "", n.outside ? "outside" : "",
+        n.isOrigin ? "origin" : "", selected ? "sel" : ""].join(" ");
+      const commit = (val) => { const v = (val || "").trim(); if (v) useApp.getState().updateTask(id, { name: v }); useApp.getState().setEditing(null); };
+      return html`<div class=${cls}>
+        <div class="disc-bar" style=${{ background: color }}></div>
+        <${Handle} type="target" position=${Position.Left} />
+        ${editing
+          ? html`<input class="task-name-input nodrag" autoFocus defaultValue=${t.name}
+              onBlur=${(e) => commit(e.target.value)}
+              onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); commit(e.target.value); } else if (e.key === "Escape") { useApp.getState().setEditing(null); } e.stopPropagation(); }} />`
+          : html`<div class="task-name">${t.name}</div>`}
+        <div class="task-meta">${t.discipline} · ${t.assignee || "—"} · ${t.durationDays}d</div>
+        ${t.status === "DONE" ? html`<span class="badge-done">✓</span>` : null}
+        ${t.status === "IN_PROGRESS" ? html`<div class="progress"><i style=${{ width: t.progress + "%" }}></i></div>` : null}
+        <${Handle} type="source" position=${Position.Right} />
+      </div>`;
+    });
+
+    const MilestoneNode = memo(function MilestoneNode({ id, data }) {
+      const n = data.n; const t = n.task;
+      const selected = useApp((s) => s.selection.taskId === id);
+      return html`<div class="ms-wrap">
+        <${Handle} type="target" position=${Position.Left} />
+        <div class=${"ms-node" + (selected ? " sel" : "")}></div>
+        <div class="ms-label">${t.name}</div>
+        <${Handle} type="source" position=${Position.Right} />
+      </div>`;
+    });
+
+    const AggregateNode = memo(function AggregateNode({ id, data }) {
+      const n = data.n;
+      const zoom = useRFStore((s) => s.transform[2]);
+      const total = n.count || 1;
+      const seg = (c, key) => c > 0 ? html`<span key=${key} style=${{ width: (c / total * 100) + "%", background: DISC_COLOR[key] }}></span>` : null;
+      const expand = () => useApp.getState().expandAggregate(id);
+      if (n.continuation) {
+        return html`<div class="agg-node" style=${{ borderStyle: "dotted", background: "#eef2ff" }} title="フォーカス深さの先で折り畳み内へ続く経路（§2.9）">
+          <${Handle} type="target" position=${Position.Left} />
+          <div class="agg-title">⋯ ${n.prefix}</div>
+          <div class="agg-sub">${n.count} 件が内部に続く</div>
+          <${Handle} type="source" position=${Position.Right} />
+        </div>`;
+      }
+      if (zoom < 0.4) {
+        return html`<div class="lod-node" style=${{ background: "#94a3b8", width: 60 }} onDoubleClick=${expand}>
+          <${Handle} type="target" position=${Position.Left} /><${Handle} type="source" position=${Position.Right} /></div>`;
+      }
+      return html`<div class=${"agg-node" + (n.dim ? " dim" : "")} onDoubleClick=${expand} title="ダブルクリックで展開（E）">
+        <${Handle} type="target" position=${Position.Left} />
+        <div class="agg-title">▣ ${n.prefix}</div>
+        <div class="agg-sub">${n.count} タスク · 進捗平均 ${n.avgProgress}%</div>
+        <div class="agg-bars">${seg(n.disc.E, "E")}${seg(n.disc.P, "P")}${seg(n.disc.C, "C")}${seg(n.disc.OTHER, "O")}</div>
+        ${n.hasMilestone ? html`<span class="agg-badges">🚩</span>` : null}
+        <${Handle} type="source" position=${Position.Right} />
+      </div>`;
+    });
+
+    const nodeTypes = { task: TaskNode, milestone: MilestoneNode, aggregate: AggregateNode };
+
+    function CanvasArea() {
+      const doc = useApp((s) => s.doc);
+      const viewSpec = useApp((s) => s.viewSpec);
+      const focus = viewSpec.focus;
+      const rf = useReactFlow();
+      const dragSrc = useRef(null);
+
+      const derived = useMemo(
+        () => deriveVisibleGraph(doc.tasks, doc.dependencies, viewSpec),
+        [doc.tasks, doc.dependencies, viewSpec]);
+      const lastDerived = useRef(derived); lastDerived.current = derived;
+
+      const [nodes, setNodes] = useState(() => toRFNodes(derived.visibleNodes));
+      const [edges, setEdges] = useState(() => toRFEdges(derived.visibleEdges));
+      useEffect(() => { setNodes(toRFNodes(derived.visibleNodes)); setEdges(toRFEdges(derived.visibleEdges)); }, [derived]);
+
+      // 1,500ノード超の表示は警告（§2.6 第一の防御）
+      const warned = useRef(false);
+      useEffect(() => {
+        if (derived.stats.visible > 1500 && !warned.current) {
+          warned.current = true;
+          useApp.getState().showToast(`この操作で${derived.stats.visible}ノードが表示されます。フィルタか下位WBS展開を推奨（性能保証外）`, true);
+        } else if (derived.stats.visible <= 1500) warned.current = false;
+      }, [derived]);
+
+      const onNodesChange = useCallback((ch) => setNodes((nds) => applyNodeChanges(ch, nds)), []);
+      const onEdgesChange = useCallback((ch) => setEdges((eds) => applyEdgeChanges(ch, eds)), []);
+      const onNodeDragStop = useCallback((_e, node) => { if (!node.id.startsWith("wbs::")) useApp.getState().setPosition(node.id, node.position); }, []);
+
+      const isValid = useCallback(({ source, target }) => {
+        if (!source || !target) return false;
+        if (source.startsWith("wbs::") || target.startsWith("wbs::")) return false;
+        return canConnect(source, target, useApp.getState().doc.dependencies).ok;
+      }, []);
+      const onConnect = useCallback(({ source, target }) => {
+        if (source.startsWith("wbs::") || target.startsWith("wbs::")) return;
+        useApp.getState().addDependencyChecked(source, target);
+      }, []);
+      const onConnectStart = useCallback((_e, p) => { dragSrc.current = p.nodeId; }, []);
+      const onConnectEnd = useCallback((e) => {
+        const src = dragSrc.current; dragSrc.current = null;
+        if (!src) return;
+        const pt = e.changedTouches ? e.changedTouches[0] : e;
+        const el = document.elementFromPoint(pt.clientX, pt.clientY);
+        const nodeEl = el && el.closest ? el.closest(".react-flow__node") : null;
+        const tgt = nodeEl && nodeEl.getAttribute("data-id");
+        if (!tgt || tgt === src) return;
+        const s = useApp.getState();
+        if (tgt.startsWith("wbs::")) { s.expandAggregate(tgt); s.showToast("集約ノードを展開しました。実タスクへ接続してください（実エッジは実タスク間のみ）"); return; }
+        const chk = canConnect(src, tgt, s.doc.dependencies);
+        if (!chk.ok) s.showToast(explainReject(chk, s), true);
+      }, []);
+
+      const onSelectionChange = useCallback(({ nodes: sn, edges: se }) => {
+        if (sn && sn.length === 1) {
+          const id = sn[0].id;
+          if (id.startsWith("wbs::")) useApp.getState().setSelection({ aggId: id });
+          else useApp.getState().setSelection({ taskId: id });
+        } else if (se && se.length === 1) {
+          useApp.getState().setSelection({ edgeId: se[0].id });
+        } else if ((!sn || !sn.length) && (!se || !se.length)) {
+          useApp.getState().setSelection({});
+        }
+      }, []);
+      const onNodesDelete = useCallback((del) => {
+        const ids = del.filter((n) => !n.id.startsWith("wbs::")).map((n) => n.id);
+        if (ids.length) useApp.getState().deleteTasks(ids);
+      }, []);
+      const onEdgesDelete = useCallback((del) => {
+        const ids = del.map((e) => e.data && e.data.realId).filter(Boolean);
+        if (ids.length) useApp.getState().deleteDeps(ids);
+      }, []);
+      const onNodeDoubleClick = useCallback((_e, node) => {
+        if (node.id.startsWith("wbs::")) useApp.getState().expandAggregate(node.id);
+        else useApp.getState().setEditing(node.id);
+      }, []);
+      const onPaneDbl = useCallback((e) => {
+        if (!(e.target.classList && e.target.classList.contains("react-flow__pane"))) return;
+        const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+        useApp.getState().addTask({ position: pos });
+      }, [rf]);
+
+      // runners 登録（ツールバー/キーボードから呼ぶ）
+      useEffect(() => {
+        const s = useApp.getState();
+        s.setRunner("fitView", () => rf.fitView({ duration: 400, padding: 0.2 }));
+        s.setRunner("createAtCenter", () => {
+          const pos = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+          useApp.getState().addTask({ position: pos });
+        });
+        s.setRunner("layoutVisible", () => {
+          const der = lastDerived.current;
+          const pos = dagreLayout(der.visibleNodes, der.visibleEdges);
+          const st = useApp.getState();
+          const byId = new Map(st.doc.tasks.map((t) => [t.id, t]));
+          const updates = {};
+          for (const vn of der.visibleNodes) {
+            const np = pos[vn.id]; if (!np) continue;
+            if (vn.kind === "task") updates[vn.id] = np;
+            else { const dx = np.x - vn.position.x, dy = np.y - vn.position.y;
+              for (const mid of vn.memberIds) { const mt = byId.get(mid); if (mt) updates[mid] = { x: mt.position.x + dx, y: mt.position.y + dy }; } }
+          }
+          st.applyPositions(updates);
+          setTimeout(() => rf.fitView({ duration: 400, padding: 0.2 }), 30);
+          st.showToast("表示中サブグラフを整列しました（" + der.visibleNodes.length + "ノード）");
+        });
+      }, [rf]);
+
+      // キーボード（§2.2）。インライン編集中は無効化。
+      useEffect(() => {
+        const onKey = (e) => {
+          const tag = (e.target.tagName || "").toLowerCase();
+          if (tag === "input" || tag === "textarea" || e.target.isContentEditable) return;
+          const s = useApp.getState();
+          const meta = e.metaKey || e.ctrlKey;
+          if (meta && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? s.redo() : s.undo(); return; }
+          if (meta && e.key.toLowerCase() === "a") { e.preventDefault(); return; }
+          if (meta) return;
+          switch (e.key) {
+            case "n": case "N": e.preventDefault(); s.runners.createAtCenter && s.runners.createAtCenter(); break;
+            case "Tab": if (s.selection.taskId) { e.preventDefault(); s.createSuccessor(s.selection.taskId); } break;
+            case "Enter": if (s.selection.taskId) { e.preventDefault(); s.setEditing(s.selection.taskId); } break;
+            case "h": case "H": if (s.selection.taskId) s.toggleFocus(s.selection.taskId); break;
+            case "e": case "E": if (s.selection.aggId) s.expandAggregate(s.selection.aggId); break;
+            case "[": s.incFocusDepth(-1); break;
+            case "]": s.incFocusDepth(1); break;
+            case "f": case "F": e.preventDefault(); rf.fitView({ duration: 400, padding: 0.2 }); break;
+            case "1": s.setExpandLevel(1); break;
+            case "2": s.setExpandLevel(2); break;
+            case "3": s.setExpandLevel(3); break;
+            case "Escape": s.escape(); break;
+          }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+      }, [rf]);
+
+      const st = derived.stats;
+      return html`<div class="canvas-area" onDoubleClick=${onPaneDbl}>
+        ${focus ? html`<${FocusBar} focus=${focus} />` : null}
+        <${ReactFlow}
+          nodes=${nodes} edges=${edges} nodeTypes=${nodeTypes}
+          onNodesChange=${onNodesChange} onEdgesChange=${onEdgesChange}
+          onNodeDragStop=${onNodeDragStop}
+          isValidConnection=${isValid} onConnect=${onConnect}
+          onConnectStart=${onConnectStart} onConnectEnd=${onConnectEnd}
+          onSelectionChange=${onSelectionChange}
+          onNodesDelete=${onNodesDelete} onEdgesDelete=${onEdgesDelete}
+          onNodeDoubleClick=${onNodeDoubleClick}
+          onlyRenderVisibleElements=${true}
+          snapToGrid=${true} snapGrid=${[15, 15]}
+          connectionRadius=${30}
+          deleteKeyCode=${["Delete", "Backspace"]}
+          multiSelectionKeyCode=${["Shift"]}
+          minZoom=${0.05} maxZoom=${2.5}
+          fitView=${true} proOptions=${{ hideAttribution: true }}>
+          <${Background} gap=${16} />
+          <${MiniMap} pannable zoomable nodeColor=${(nd) => nd.type === "aggregate" ? "#94a3b8" : (DISC_COLOR[nd.data?.n?.task?.discipline] || "#64748b")} />
+          <${Controls} />
+        </${ReactFlow}>
+        <div class="hint">空白ダブルクリックで作成 · ハンドルからドラッグで接続 · N/Tab/Enter/H/F/1-3/Delete/⌘Z · 表示 ${st.visible} / 全 ${st.total}</div>
+      </div>`;
+    }
+
+    function FocusBar({ focus }) {
+      const name = useApp((s) => nameOf(s, focus.taskId));
+      return html`<div class="focusbar">
+        <span><b>${name}</b> の上流${focus.up}・下流${focus.down}階層を表示中</span>
+        <span>深さ <button class="btn" onClick=${() => useApp.getState().incFocusDepth(-1)}>−</button>
+        <button class="btn" onClick=${() => useApp.getState().incFocusDepth(1)}>＋</button></span>
+        <button class="btn" onClick=${() => useApp.getState().clearFocus()}>解除 (Esc)</button>
+      </div>`;
+    }
+
+    // ---- ヘッダ / ツールバー ----
+    function Header() {
+      const name = useApp((s) => s.doc.project.name);
+      const saveStatus = useApp((s) => s.saveStatus);
+      const past = useApp((s) => s.past.length);
+      const future = useApp((s) => s.future.length);
+      const runners = useApp((s) => s.runners);
+      const sel = useApp((s) => s.selection);
+      const doExport = () => {
+        const doc = useApp.getState().doc;
+        const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${doc.project.name}-${new Date().toISOString().slice(0, 10)}.epcgraph.json`;
+        a.click();
+      };
+      const fileRef = useRef(null);
+      const doImport = (file) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const doc = JSON.parse(reader.result);
+            const v = validateDoc(doc);
+            if (!v.ok) { useApp.getState().showToast("インポート検証エラー: " + v.errors.slice(0, 2).join(" / "), true); return; }
+            useApp.getState().loadDoc(doc);
+            useApp.getState()._fit(200);
+            useApp.getState().showToast("インポートしました（" + doc.tasks.length + "タスク）");
+          } catch (e) { useApp.getState().showToast("JSON解析に失敗しました", true); }
+        };
+        reader.readAsText(file);
+      };
+      return html`<div class="header">
+        <span class="proj">${name}</span>
+        <button class="btn primary" onClick=${() => runners.createAtCenter && runners.createAtCenter()}>＋タスク (N)</button>
+        <button class="btn" onClick=${() => runners.layoutVisible && runners.layoutVisible()}>自動整列（表示中）</button>
+        <button class="btn" onClick=${() => useApp.getState().layoutAll()}>全体整列（Worker）</button>
+        <button class="btn" disabled=${past === 0} onClick=${() => useApp.getState().undo()}>↶ Undo</button>
+        <button class="btn" disabled=${future === 0} onClick=${() => useApp.getState().redo()}>Redo ↷</button>
+        <span class="spacer"></span>
+        <button class="btn" onClick=${() => useApp.getState().generateDemo()}>4,000ノード生成</button>
+        <button class="btn" onClick=${doExport}>Export</button>
+        <button class="btn" onClick=${() => fileRef.current.click()}>Import</button>
+        <input ref=${fileRef} type="file" accept=".json,.epcgraph.json" style=${{ display: "none" }}
+          onChange=${(e) => { if (e.target.files[0]) doImport(e.target.files[0]); e.target.value = ""; }} />
+        <span class=${"savebadge " + saveStatus}>${saveStatus === "saved" ? "保存済み ✓" : "保存中…"}</span>
+      </div>`;
+    }
+
+    function Breadcrumb() {
+      const sel = useApp((s) => s.selection.taskId);
+      const task = useApp((s) => s.doc.tasks.find((t) => t.id === s.selection.taskId));
+      if (!task) return html`<div class="breadcrumb">タスク未選択</div>`;
+      const path = wbsPath(task.wbsCode);
+      return html`<div class="breadcrumb">
+        WBS: ${path.length ? path.map((p, i) => html`<span key=${p}>${i > 0 ? " › " : ""}<span class="crumb"
+          onClick=${() => useApp.getState().setFilter({ wbsPrefixes: [p] })}>${p}</span></span>`) : "（ルート直下）"}
+        ${" › "}<b>${task.name}</b>
+      </div>`;
+    }
+
+    // ---- 左パネル: フィルタ・ビュー ----
+    function LeftPanel() {
+      const filter = useApp((s) => s.viewSpec.filter);
+      const displayMode = useApp((s) => s.viewSpec.displayMode);
+      const expandLevel = useApp((s) => s.expandLevel);
+      const me = useApp((s) => s.me);
+      const doc = useApp((s) => s.doc);
+      const viewSpec = useApp((s) => s.viewSpec);
+      const stats = useMemo(() => deriveVisibleGraph(doc.tasks, doc.dependencies, viewSpec).stats, [doc.tasks, doc.dependencies, viewSpec]);
+      const assignees = useMemo(() => [...new Set(doc.tasks.map((t) => t.assignee).filter(Boolean))].sort(), [doc.tasks]);
+      const chip = (key, val, label) => html`<span key=${val} class=${"chip" + ((filter[key] || []).includes(val) ? " on" : "")}
+        onClick=${() => useApp.getState().toggleArrayFilter(key, val)}>${label}</span>`;
+      return html`<div class="panel">
+        <h3>私は誰（updatedBy / @me）</h3>
+        <input value=${me} onChange=${(e) => useApp.getState().setMe(e.target.value)} style=${{ width: "100%", padding: "4px 6px" }} />
+
+        <h3>組込みビュー</h3>
+        <div class="row">
+          <button class="btn" onClick=${() => useApp.getState().quickMyTasks()}>自分のタスク</button>
+          <button class="btn" disabled title="CPM実装後（Phase 1）">CPのみ</button>
+          <button class="btn" onClick=${() => useApp.getState().setFilter({ milestonesOnly: !filter.milestonesOnly })}>マイルストーン</button>
+        </div>
+
+        <h3>フィルタ（AND結合）</h3>
+        <div class="field"><label>工種</label><div class="row">${DISCIPLINES.map((d) => chip("disciplines", d, d))}</div></div>
+        <div class="field"><label>ステータス</label><div class="row">${STATUSES.map((s) => chip("statuses", s, s.replace("_", " ")))}</div></div>
+        <div class="field"><label>担当</label>
+          <select value=${(filter.assignees && filter.assignees[0]) || ""} onChange=${(e) => useApp.getState().setFilter({ assignees: e.target.value ? [e.target.value] : [] })}>
+            <option value="">（すべて）</option>
+            <option value="@me">@me（${me}）</option>
+            ${assignees.map((a) => html`<option key=${a} value=${a}>${a}</option>`)}
+          </select></div>
+        <div class="field"><label>WBSプレフィックス</label>
+          <input placeholder="例 1.2" value=${(filter.wbsPrefixes && filter.wbsPrefixes[0]) || ""}
+            onChange=${(e) => useApp.getState().setFilter({ wbsPrefixes: e.target.value ? [e.target.value.trim()] : [] })} /></div>
+        <div class="field"><label>テキスト検索</label>
+          <input placeholder="名前/notes" value=${filter.text || ""} onChange=${(e) => useApp.getState().setFilter({ text: e.target.value })} /></div>
+        <div class="row">
+          <span>表示モード:</span>
+          <button class=${"btn" + (displayMode === "DIM" ? " on" : "")} onClick=${() => useApp.getState().setDisplayMode("DIM")}>DIM減光</button>
+          <button class=${"btn" + (displayMode === "ISOLATE" ? " on" : "")} onClick=${() => useApp.getState().setDisplayMode("ISOLATE")}>ISOLATE抽出</button>
+        </div>
+        <div class="row"><button class="btn" onClick=${() => useApp.getState().clearFilter()}>フィルタ解除</button></div>
+
+        <h3>WBS展開レベル（§2.7）</h3>
+        <div class="row">
+          ${[1, 2, 3].map((n) => html`<button key=${n} class=${"btn" + (expandLevel === n ? " on" : "")} onClick=${() => useApp.getState().setExpandLevel(n)}>Lv${n}</button>`)}
+          <button class="btn" onClick=${() => useApp.getState().collapseAll()}>全折り畳み</button>
+        </div>
+
+        <h3>表示統計</h3>
+        <div class="stat">全タスク: <b>${stats.total}</b></div>
+        <div class="stat">表示ノード: <b>${stats.visible}</b>（集約 ${stats.aggregates}）</div>
+        <div class="stat">表示エッジ: <b>${stats.edges}</b></div>
+        <div class="stat">マッチ: <b>${stats.matched}</b></div>
+
+        <h3>凡例</h3>
+        <div class="legend">
+          <span><i style=${{ background: DISC_COLOR.E }}></i>設計E</span>
+          <span><i style=${{ background: DISC_COLOR.P }}></i>調達P</span>
+          <span><i style=${{ background: DISC_COLOR.C }}></i>施工C</span>
+        </div>
+      </div>`;
+    }
+
+    // ---- 右パネル: 属性フォーム + 先行/後続 + WBS ----
+    function RightPanel() {
+      const taskId = useApp((s) => s.selection.taskId);
+      const task = useApp((s) => s.doc.tasks.find((t) => t.id === s.selection.taskId));
+      const deps = useApp((s) => s.doc.dependencies);
+      const tasks = useApp((s) => s.doc.tasks);
+      if (!task) return html`<div class="panel right"><h3>タスク未選択</h3><p class="stat">ノードをクリックすると属性・依存を編集できます。</p></div>`;
+      const upd = (patch) => useApp.getState().updateTask(task.id, patch);
+      const preds = deps.filter((d) => d.successorId === task.id);
+      const succs = deps.filter((d) => d.predecessorId === task.id);
+      const byId = new Map(tasks.map((t) => [t.id, t]));
+      const siblings = tasks.filter((t) => t.wbsCode === task.wbsCode && t.id !== task.id);
+      const depItem = (d, otherId) => html`<div class="depitem" key=${d.id}>
+        <span class="name" onClick=${() => useApp.getState().setSelection({ taskId: otherId })}>${(byId.get(otherId) || {}).name || otherId.slice(0, 6)}</span>
+        <span class="stat">${d.type} ${d.lagDays ? (d.lagDays > 0 ? "+" : "") + d.lagDays + "d" : ""}</span>
+        <span class="x" title="依存削除" onClick=${() => useApp.getState().deleteDeps([d.id])}>×</span>
+      </div>`;
+      return html`<div class="panel right">
+        <h3>属性</h3>
+        <div class="field"><label>名前</label><input value=${task.name} onChange=${(e) => upd({ name: e.target.value })} /></div>
+        <div class="field"><label>WBSコード</label><input value=${task.wbsCode} onChange=${(e) => upd({ wbsCode: e.target.value })} /></div>
+        <div class="row">
+          <div class="field" style=${{ flex: 1 }}><label>工種</label>
+            <select value=${task.discipline} onChange=${(e) => upd({ discipline: e.target.value })}>${DISCIPLINES.map((d) => html`<option key=${d}>${d}</option>`)}</select></div>
+          <div class="field" style=${{ flex: 1 }}><label>ステータス</label>
+            <select value=${task.status} onChange=${(e) => upd({ status: e.target.value })}>${STATUSES.map((s) => html`<option key=${s}>${s}</option>`)}</select></div>
+        </div>
+        <div class="row">
+          <div class="field" style=${{ flex: 1 }}><label>進捗%</label><input type="number" min="0" max="100" value=${task.progress} onChange=${(e) => upd({ progress: Math.max(0, Math.min(100, +e.target.value || 0)) })} /></div>
+          <div class="field" style=${{ flex: 1 }}><label>期間(日)</label><input type="number" min="0" disabled=${task.isMilestone} value=${task.durationDays} onChange=${(e) => upd({ durationDays: +e.target.value || 0 })} /></div>
+        </div>
+        <div class="field"><label>担当</label><input value=${task.assignee} onChange=${(e) => upd({ assignee: e.target.value })} /></div>
+        <div class="row"><label><input type="checkbox" checked=${task.isMilestone} onChange=${(e) => upd({ isMilestone: e.target.checked, durationDays: e.target.checked ? 0 : task.durationDays })} /> マイルストーン</label></div>
+        <div class="field"><label>notes</label><textarea rows="2" value=${task.notes} onChange=${(e) => upd({ notes: e.target.value })}></textarea></div>
+
+        <h3>依存（先行/後続）</h3>
+        <div class="stat">先行（predecessors）</div>
+        ${preds.length ? preds.map((d) => depItem(d, d.predecessorId)) : html`<div class="stat">— なし</div>`}
+        <div class="stat" style=${{ marginTop: 6 }}>後続（successors）</div>
+        ${succs.length ? succs.map((d) => depItem(d, d.successorId)) : html`<div class="stat">— なし</div>`}
+        <div class="row">
+          <button class="btn" onClick=${() => useApp.getState().toggleFocus(task.id)}>近傍フォーカス (H)</button>
+        </div>
+
+        <h3>WBS（親/兄弟）</h3>
+        <div class="stat">パス: ${wbsPath(task.wbsCode).join(" › ") || "（ルート）"}</div>
+        <div class="stat" style=${{ marginTop: 4 }}>兄弟タスク（${siblings.length}）</div>
+        ${siblings.slice(0, 8).map((t) => html`<div class="depitem" key=${t.id}><span class="name" onClick=${() => useApp.getState().setSelection({ taskId: t.id })}>${t.name}</span></div>`)}
+
+        <h3>CPM（Phase 0では持つだけ・未計算）</h3>
+        <div class="stat">ES/EF/LS/LF/TF/isCritical: <b>—（未計算）</b></div>
+        <div class="meta-line" style=${{ marginTop: 8 }}>rev ${task.rev} · 更新 ${task.updatedBy} · ${task.updatedAt.slice(0, 16).replace("T", " ")}</div>
+      </div>`;
+    }
+
+    function Toasts() {
+      const toast = useApp((s) => s.toast);
+      return html`<div class="toasts">${toast.map((t) => html`<div key=${t.id} class=${"toast" + (t.err ? " err" : "")}>${t.msg}</div>`)}</div>`;
+    }
+
+    function App() {
+      return html`<${ReactFlowProvider}>
+        <div class="app">
+          <${Header} />
+          <${Breadcrumb} />
+          <div class="body">
+            <${LeftPanel} />
+            <${CanvasArea} />
+            <${RightPanel} />
+          </div>
+          <${Toasts} />
+        </div>
+      </${ReactFlowProvider}>`;
+    }
+
+    // デバッグ/自動検証用ハンドル（Phase 0 モックのみ。純関数とストアへ外部からアクセス可能に）
+    window.__EPC = { useApp, deriveVisibleGraph, canConnect, seedDemo, topoSort, validateDoc };
+
+    createRoot(document.getElementById("root")).render(html`<${App} />`);
+  </script>
+</body>
+</html>
