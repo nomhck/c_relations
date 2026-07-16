@@ -1,15 +1,82 @@
 # c_relations — EPCタスク依存関係グラフエディタ
 
-EPC工程（プラント/建設）のタスク依存関係を**ノードグラフで可視化・編集**するツール。
-ノード＝タスク、エッジ＝依存（先行/後続）。UI/UX最優先で「直感的に依存関係を整理」がコア価値。4,000+ノード規模に対応。
+EPC工程（プラント・建設）の**タスク依存関係をノードグラフで直感的に可視化・編集**するツール。
+ノード＝タスク、エッジ＝依存（先行/後続）。**4,000+ノード規模**でも軽快に扱えることを最優先に設計しています。
+
+**🔗 ライブデモ（`main` への push で自動デプロイ）**: https://nomhck.github.io/c_relations/
+
+> ブラウザ内（IndexedDB）で完結。ヘッダの「4,000ノードdemo生成」ですぐ体感できます。サーバー不要。
+
+---
+
+## 何ができるか（現状）
+
+### グラフ編集
+- タスクの作成／編集／削除（ダブルクリック作成・インライン編集・Tab連続作成）
+- 依存（先行→後続）の接続／削除。**循環依存は自動で拒否**し経路をトースト表示
+- WBS階層の**折り畳み／展開**（集約ノード化）
+
+### 大規模ナビゲーション（設計思想「4,000を一度に描かない」）
+- **フィルタ**（部署／工種／ステータス）＋ DIM/ISOLATE 切替 → 常時表示を数百ノードに制御
+- **近傍フォーカス（`H`）** — 選択タスクの先行/後続だけを表示
+- 自動レイアウト（dagre、全体整列は Web Worker）／ミニマップ／ズームLOD
+
+### クリティカルパス（CPM Step1）
+- 前進/後退計算で **ES/EF/LS/LF・トータルフロート・クリティカルパス**を算出（暦日・FS依存）
+- **CP強調トグル**／**「CPのみ表示」ビュー**／プロジェクト完了日サマリ
+
+### 永続化・プロジェクト
+- **IndexedDB（Dexie）** に行単位・差分保存、保存履歴5世代
+- 複数プロジェクト（新規／複製／切替／削除）
+- JSON エクスポート／インポート
+
+---
+
+## 動かす
+
+### ライブ（インストール不要）
+https://nomhck.github.io/c_relations/ を開くだけ。
+
+### ローカル開発
+```sh
+cd epc-task-graph/app
+npm install
+npm run dev          # http://localhost:5173/
+npm run build        # 本番ビルド
+npx vitest run       # 単体テスト（39）
+npx playwright test  # e2e（3）
+```
+
+### ゼロ設定モック（ビルド不要・Phase 0 の参考実装）
+`epc-task-graph/mock/index.html` をブラウザで開くだけ（単一HTML・CDN依存）。
+
+---
 
 ## 構成
-- 設計書（source of truth）: [`docs/epc-task-graph-design.md`](docs/epc-task-graph-design.md)（全11章）
-- Phase 0 モック（ビルド不要・ブラウザで開くだけ）: [`epc-task-graph/mock/index.html`](epc-task-graph/mock/index.html)
-
-## モックの動かし方
-`epc-task-graph/mock/index.html` をブラウザで開くだけ（CDN到達が必要）。
-「4,000ノードデモ生成」→ フィルタ(ISOLATE)・WBS折り畳み・近傍フォーカス(`H`) を試せます。
+```
+docs/epc-task-graph-design.md      設計書（source of truth・全11章）
+epc-task-graph/
+  mock/index.html                  Phase 0 ゼロ設定モック（単一HTML）
+  app/                             Vite + React18 + TypeScript 本体
+    src/domain/                    React非依存の純関数（グラフ/フィルタ/CPM/表示パイプライン）
+    src/store/  src/storage/       zustand + immer + zundo / Dexie（差分永続化）
+    src/adapters/  src/components/  React Flow v12 隔離レイヤ + UI
+    tests/                         vitest（単体）＋ playwright（e2e）
+```
 
 ## ロードマップ
-Phase 0 モック → 1 ローカルMVP(Vite)+CP表示 → 2 CPM完成 → 3 ガント → 4 Azure本番+複数人編集 → 5 MS Project(MSPDI)連携。
+- [x] **Phase 0** — ゼロ設定モック
+- [x] **Phase 1 PR1–2** — Vite化・domain層（テスト付き）・モック移植
+- [x] **Phase 1 PR3** — Dexie永続化・複数プロジェクト
+- [x] **Phase 1 PR4** — CPM Step1・クリティカルパス表示
+- [ ] Phase 1 PR5–8 — フィルタ/ビュー完成・検索・WBSツリー・俯瞰Canvas・キーボード
+- [ ] Phase 2 — CPM完成（SS/FF/SF・カレンダー・制約）
+- [ ] Phase 3 — ガントビュー
+- [ ] Phase 4 — Azure本番化＋複数人編集（Entra ID・行単位衝突検知）
+- [ ] Phase 5 — MS Project（MSPDI）連携
+
+詳細は [`docs/epc-task-graph-design.md`](docs/epc-task-graph-design.md) を参照。
+
+## 技術スタック
+React 18 / TypeScript / Vite / @xyflow/react v12 / zustand + immer + zundo / Dexie(IndexedDB) / dagre / Zod。
+設計＝Fable、実装＝Opus・Sonnet。
