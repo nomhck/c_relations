@@ -30,13 +30,19 @@ import {
   starterDoc,
   collapsedForLevel,
   allTopPrefixes,
-  parseDoc,
+  emptyDoc,
 } from '../domain';
 import { runFullLayout } from '../layout/layout';
+import {
+  getCurrentProjectId,
+  getRepo,
+  persistPatch,
+  setCurrentProjectId,
+  type DirtySnapshot,
+} from './persistence';
 
 enableMapSet();
 
-const LS_KEY = 'epc-app-doc-v1';
 const LS_ME = 'epc-app-me';
 
 export interface Selection {
@@ -84,6 +90,8 @@ export interface AppState {
   saveStatus: 'saved' | 'dirty';
   dirty: DirtyState;
   runners: Runners;
+  cpHighlight: boolean; // CP強調トグル（§2.11/§9.2）。非永続・Undo対象外
+  projectList: ProjectMeta[]; // 複数プロジェクト一覧（§6.1）
 
   // ---- アクション ----
   setRunner: (name: keyof Runners, fn: () => void) => void;
@@ -115,43 +123,105 @@ export interface AppState {
   incFocusDepth: (delta: number) => void;
   escape: () => void;
   quickMyTasks: () => void;
+  quickCriticalOnly: () => void;
+  toggleCpHighlight: () => void;
 
   undo: () => void;
   redo: () => void;
 
   toDoc: () => GraphDoc;
-  loadDoc: (doc: GraphDoc) => void;
+  loadDoc: (doc: GraphDoc, opts?: { persist?: boolean }) => void;
   generateDemo: () => void;
   layoutAll: () => void;
+
+  // ---- 複数プロジェクト管理（§6.1）----
+  renameProject: (name: string) => void;
+  setDataDate: (d: string) => void;
+  refreshProjects: () => Promise<void>;
+  switchProject: (id: string) => Promise<void>;
+  newProject: (name?: string) => Promise<void>;
+  duplicateCurrentProject: () => Promise<void>;
+  deleteCurrentProject: () => Promise<void>;
 }
 
-// ---- 永続化（localStorage・デバウンス500ms差分保存。Dexie は次PR）----
+// ---- 永続化（Dexie・デバウンス500ms差分保存、§6.1）----
+// ダーティ集合から GraphPatch を組み、DexieRepository.savePatch（差分書き）へ渡す。
+// ハイドレーション中（起動時の Dexie 読込）は保存を抑止する。
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let hydrating = false;
+
+function snapshotDirty(d: DirtyState): DirtySnapshot {
+  return {
+    tasks: [...d.tasks],
+    deps: [...d.deps],
+    deletedTasks: [...d.deletedTasks],
+    deletedDeps: [...d.deletedDeps],
+  };
+}
+
 function scheduleSave() {
+  if (hydrating) return;
   if (saveTimer) clearTimeout(saveTimer);
   useApp.setState({ saveStatus: 'dirty' });
   saveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(useApp.getState().toDoc()));
-      useApp.setState({ saveStatus: 'saved' });
-    } catch {
-      useApp.setState({ saveStatus: 'dirty' });
-      useApp.getState().showToast('localStorage保存に失敗（容量超過の可能性）。エクスポートを推奨', true);
-    }
+    const snap = snapshotDirty(useApp.getState().dirty);
+    const doc = useApp.getState().toDoc();
+    persistPatch(doc, snap)
+      .then((res) => {
+        if (!res.ok) {
+          // ローカル単独運用では通常起きない（§7.2）。起きたら通知のみ。
+          useApp.getState().showToast('保存で衝突を検知しました（' + res.conflicts.length + '件）', true);
+          return;
+        }
+        // 保存済みの ID だけをダーティから外す（保存中に追加された分は残す）。
+        useApp.setState((s) => {
+          for (const id of snap.tasks) s.dirty.tasks.delete(id);
+          for (const id of snap.deps) s.dirty.deps.delete(id);
+          for (const id of snap.deletedTasks) s.dirty.deletedTasks.delete(id);
+          for (const id of snap.deletedDeps) s.dirty.deletedDeps.delete(id);
+          const clean =
+            s.dirty.tasks.size === 0 &&
+            s.dirty.deps.size === 0 &&
+            s.dirty.deletedTasks.size === 0 &&
+            s.dirty.deletedDeps.size === 0;
+          s.saveStatus = clean ? 'saved' : 'dirty';
+        });
+      })
+      .catch(() => {
+        useApp.setState({ saveStatus: 'dirty' });
+        useApp.getState().showToast('Dexie保存に失敗しました。エクスポートを推奨', true);
+      });
   }, 500);
 }
 
-function loadInitialDoc(): GraphDoc {
+// 起動時: まず starter を同期表示 → Dexie から現在プロジェクトへ非同期ハイドレート（§6.1）。
+// 空DBの初回は「現在の starter を初回プロジェクトとして保存」するだけで loadDoc しない
+// （同期表示済みの state をクロバーしない）。既存プロジェクトがある時のみ読み込んで差し替える。
+export async function bootstrapStore(): Promise<void> {
+  hydrating = true;
   try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) {
-      const parsed = parseDoc(JSON.parse(raw));
-      if (parsed) return parsed;
+    const repo = getRepo();
+    const list = await repo.listProjects();
+    if (!list.length) {
+      const doc = useApp.getState().toDoc();
+      await repo.saveGraph(doc);
+      setCurrentProjectId(doc.project.id);
+    } else {
+      const cur = getCurrentProjectId();
+      const targetId = cur && list.some((p) => p.id === cur) ? cur : list[0].id;
+      setCurrentProjectId(targetId);
+      const doc = await repo.loadGraph(targetId);
+      useApp.getState().loadDoc(doc, { persist: false });
     }
+    await useApp.getState().refreshProjects();
   } catch {
-    /* ignore */
+    /* Dexie 不可環境では starter のまま動作 */
+  } finally {
+    hydrating = false;
+    // ハイドレーション中に行われた編集（保存が抑止されていた分）を吐き出す。
+    const d = useApp.getState().dirty;
+    if (d.tasks.size || d.deps.size || d.deletedTasks.size || d.deletedDeps.size) scheduleSave();
   }
-  return starterDoc();
 }
 
 function initialMe(): string {
@@ -188,7 +258,7 @@ export function explainReject(chk: ReturnType<typeof canConnect>, s: AppState): 
   return '接続できません';
 }
 
-const doc0 = loadInitialDoc();
+const doc0 = starterDoc();
 const me0 = initialMe();
 
 export const useApp = create<AppState>()(
@@ -217,6 +287,8 @@ export const useApp = create<AppState>()(
       saveStatus: 'saved',
       dirty: { tasks: new Set(), deps: new Set(), deletedTasks: new Set(), deletedDeps: new Set() },
       runners: {},
+      cpHighlight: false,
+      projectList: [],
 
       setRunner: (name, fn) =>
         set((s) => {
@@ -462,6 +534,20 @@ export const useApp = create<AppState>()(
         });
         get().fit();
       },
+      // 「CPのみ表示」組込みビュー（§2.8）: criticalOnly + ISOLATE で背骨チェーンを抽出。
+      quickCriticalOnly: () => {
+        set((s) => {
+          s.viewSpec.displayMode = 'ISOLATE';
+          s.viewSpec.focus = null;
+          s.viewSpec.filter = { criticalOnly: true };
+          s.cpHighlight = true;
+        });
+        get().fit();
+      },
+      toggleCpHighlight: () =>
+        set((s) => {
+          s.cpHighlight = !s.cpHighlight;
+        }),
 
       // ---- Undo / Redo（zundo temporal 経由。戻した行もダーティ扱い、§2.3）----
       undo: () => {
@@ -494,7 +580,7 @@ export const useApp = create<AppState>()(
           dependencies: s.dependencies,
         };
       },
-      loadDoc: (doc) => {
+      loadDoc: (doc, opts) => {
         set((s) => {
           s.schemaVersion = doc.schemaVersion;
           s.project = doc.project;
@@ -514,9 +600,27 @@ export const useApp = create<AppState>()(
           };
           s.expandLevel = doc.viewState.expandLevel || 2;
           s.dirty = { tasks: new Set(), deps: new Set(), deletedTasks: new Set(), deletedDeps: new Set() };
+          s.saveStatus = 'saved';
         });
         useApp.temporal.getState().clear(); // 新ドキュメントは履歴を持ち越さない
-        scheduleSave();
+        // loadDoc は「全量差替え」（デモ生成・インポート等）。差分ではなく全量 saveGraph で
+        // 永続化する。persist:false（起動時ハイドレート・切替/複製/復元の自前保存）では保存しない。
+        if (!opts || opts.persist !== false) {
+          const doc2 = get().toDoc();
+          if (hydrating) return;
+          useApp.setState({ saveStatus: 'dirty' });
+          getRepo()
+            .saveGraph(doc2)
+            .then(() => {
+              setCurrentProjectId(doc2.project.id);
+              useApp.setState({ saveStatus: 'saved' });
+              void get().refreshProjects();
+            })
+            .catch(() => {
+              useApp.setState({ saveStatus: 'dirty' });
+              get().showToast('Dexie保存に失敗しました。エクスポートを推奨', true);
+            });
+        }
       },
       generateDemo: () => {
         const doc = seedDemo({ count: 4000, density: 1.5 });
@@ -541,6 +645,93 @@ export const useApp = create<AppState>()(
             get().runners.fitView?.();
           })
           .catch(() => get().showToast('全体整列に失敗しました', true));
+      },
+
+      // ---- 複数プロジェクト管理（§6.1）----
+      renameProject: (name) => {
+        set((s) => {
+          s.project.name = name;
+          s.project.updatedAt = nowISO();
+        });
+        scheduleSave();
+      },
+      setDataDate: (d) => {
+        set((s) => {
+          s.project.dataDate = d;
+          s.project.updatedAt = nowISO();
+        });
+        scheduleSave();
+      },
+      refreshProjects: async () => {
+        try {
+          const list = await getRepo().listProjects();
+          set((s) => {
+            s.projectList = list;
+          });
+        } catch {
+          /* ignore */
+        }
+      },
+      switchProject: async (id) => {
+        // 保存待ちを吐き出してから切替（未保存差分を落とさない）。
+        const snap = snapshotDirty(get().dirty);
+        if (snap.tasks.length || snap.deps.length || snap.deletedTasks.length || snap.deletedDeps.length) {
+          try {
+            await persistPatch(get().toDoc(), snap);
+          } catch {
+            /* ignore */
+          }
+        }
+        try {
+          const doc = await getRepo().loadGraph(id);
+          setCurrentProjectId(id);
+          get().loadDoc(doc, { persist: false });
+          get().fit(200);
+          get().showToast('プロジェクトを切り替えました: ' + doc.project.name);
+        } catch {
+          get().showToast('プロジェクトの読込に失敗しました', true);
+        }
+      },
+      newProject: async (name) => {
+        const doc = emptyDoc(name || '新規プロジェクト');
+        try {
+          await getRepo().saveGraph(doc);
+          setCurrentProjectId(doc.project.id);
+          get().loadDoc(doc, { persist: false });
+          await get().refreshProjects();
+          get().showToast('新規プロジェクトを作成しました');
+        } catch {
+          get().showToast('プロジェクト作成に失敗しました', true);
+        }
+      },
+      duplicateCurrentProject: async () => {
+        const cur = get().project;
+        try {
+          const dup = await getRepo().duplicateProject(cur.id, cur.name + '（複製）');
+          setCurrentProjectId(dup.project.id);
+          get().loadDoc(dup, { persist: false });
+          await get().refreshProjects();
+          get().fit(200);
+          get().showToast('プロジェクトを複製しました');
+        } catch {
+          get().showToast('複製に失敗しました', true);
+        }
+      },
+      deleteCurrentProject: async () => {
+        const curId = get().project.id;
+        try {
+          await getRepo().deleteProject(curId);
+          const list = await getRepo().listProjects();
+          if (list.length) {
+            await get().switchProject(list[0].id);
+          } else {
+            await get().newProject('新規プロジェクト');
+          }
+          await get().refreshProjects();
+          get().showToast('プロジェクトを削除しました');
+        } catch {
+          get().showToast('削除に失敗しました', true);
+        }
       },
     })),
     {
