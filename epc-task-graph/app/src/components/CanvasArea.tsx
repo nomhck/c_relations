@@ -29,6 +29,7 @@ import {
 import { toRFNodes, toRFEdges, type RFNodeData } from '../adapters/reactflow';
 import { dagreLayout } from '../layout/layout';
 import { useApp, explainReject, nameOf } from '../store/store';
+import { selectCpm } from '../store/selectors';
 import { nodeTypes } from './nodes';
 
 function FocusBar() {
@@ -60,13 +61,23 @@ export function CanvasArea() {
   const tasks = useApp((s) => s.tasks);
   const dependencies = useApp((s) => s.dependencies);
   const viewSpec = useApp((s) => s.viewSpec);
+  const dataDate = useApp((s) => s.project.dataDate);
+  const cpHighlight = useApp((s) => s.cpHighlight);
   const focus = viewSpec.focus;
   const rf = useReactFlow();
   const dragSrc = useRef<string | null>(null);
 
+  // CPM 導出値（メモ化・参照が変わった時だけ再計算、§9.2）。
+  const cpm = useMemo(() => selectCpm(tasks, dependencies, dataDate), [tasks, dependencies, dataDate]);
+  // 表示パイプラインへ CPM を注入した viewSpec（安定参照）。CP強調/CPのみ を統合。
+  const augSpec = useMemo(
+    () => ({ ...viewSpec, criticalTasks: cpm.criticalTasks, criticalEdges: cpm.criticalEdges, cpHighlight }),
+    [viewSpec, cpm, cpHighlight],
+  );
+
   const derived = useMemo(
-    () => deriveVisibleGraph(tasks, dependencies, viewSpec),
-    [tasks, dependencies, viewSpec],
+    () => deriveVisibleGraph(tasks, dependencies, augSpec),
+    [tasks, dependencies, augSpec],
   );
   const lastDerived = useRef(derived);
   lastDerived.current = derived;

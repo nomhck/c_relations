@@ -6,6 +6,7 @@ export * from './graph';
 export * from './wbs';
 export * from './filter';
 export * from './deriveVisibleGraph';
+export * from './cpm';
 export * from './schema';
 export * from './validate';
 export * from './seed';

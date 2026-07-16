@@ -1,13 +1,77 @@
-// ヘッダ/ツールバー（§1.3）: 作成・整列・Undo/Redo・デモ生成・Export/Import・保存状態。
-import { useRef } from 'react';
+// ヘッダ/ツールバー（§1.3）: プロジェクト切替・CP強調・完了日・作成・整列・Undo/Redo・
+//   デモ生成・Export/Import・保存状態。
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { useApp } from '../store/store';
+import { selectCpm } from '../store/selectors';
 import { validateDoc, wbsPath } from '../domain';
+
+// プロジェクト完了日サマリ（§9.2）。完了日が動いたらフラッシュして即時フィードバック。
+function CompletionSummary() {
+  const tasks = useApp((s) => s.tasks);
+  const deps = useApp((s) => s.dependencies);
+  const dataDate = useApp((s) => s.project.dataDate);
+  const cpm = useMemo(() => selectCpm(tasks, deps, dataDate), [tasks, deps, dataDate]);
+  const endDate = cpm.projectEndDate;
+  const [flash, setFlash] = useState(false);
+  const prev = useRef(endDate);
+  useEffect(() => {
+    if (prev.current !== endDate) {
+      prev.current = endDate;
+      setFlash(true);
+      const t = setTimeout(() => setFlash(false), 700);
+      return () => clearTimeout(t);
+    }
+  }, [endDate]);
+  return (
+    <span className={'completion' + (flash ? ' flash' : '')} data-testid="completion" title="CPM Step1 による完了日（暦日・FS）">
+      完了日: <b>{endDate || '—'}</b>（+{cpm.projectEnd}d · CP {cpm.criticalTasks.size}）
+    </span>
+  );
+}
+
+function ProjectBar() {
+  const projectId = useApp((s) => s.project.id);
+  const name = useApp((s) => s.project.name);
+  const list = useApp((s) => s.projectList);
+  return (
+    <span className="projectbar">
+      <select
+        value={projectId}
+        onChange={(e) => useApp.getState().switchProject(e.target.value)}
+        title="プロジェクト切替"
+      >
+        {list.length === 0 ? <option value={projectId}>{name}</option> : null}
+        {list.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+      <button className="btn" title="新規プロジェクト" onClick={() => useApp.getState().newProject('新規プロジェクト')}>
+        ＋新規
+      </button>
+      <button className="btn" title="複製" onClick={() => useApp.getState().duplicateCurrentProject()}>
+        複製
+      </button>
+      <button
+        className="btn"
+        title="削除"
+        onClick={() => {
+          if (confirm('このプロジェクトを削除しますか？（元に戻せません）')) useApp.getState().deleteCurrentProject();
+        }}
+      >
+        削除
+      </button>
+    </span>
+  );
+}
 
 export function Header() {
   const name = useApp((s) => s.project.name);
   const saveStatus = useApp((s) => s.saveStatus);
   const runners = useApp((s) => s.runners);
+  const cpHighlight = useApp((s) => s.cpHighlight);
   // Undo/Redo 可否は zundo の temporal ストアから購読（§2.3）。
   const canUndo = useStore(useApp.temporal, (s) => s.pastStates.length > 0);
   const canRedo = useStore(useApp.temporal, (s) => s.futureStates.length > 0);
@@ -44,6 +108,16 @@ export function Header() {
   return (
     <div className="header">
       <span className="proj">{name}</span>
+      <ProjectBar />
+      <CompletionSummary />
+      <button
+        className={'btn' + (cpHighlight ? ' on' : '')}
+        onClick={() => useApp.getState().toggleCpHighlight()}
+        title="クリティカルパスを赤で強調（§2.11）"
+        data-testid="cp-toggle"
+      >
+        CP強調
+      </button>
       <button className="btn primary" onClick={() => runners.createAtCenter?.()}>
         ＋タスク (N)
       </button>

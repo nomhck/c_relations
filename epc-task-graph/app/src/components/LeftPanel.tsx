@@ -1,6 +1,7 @@
 // 左パネル（§2.8）: 私は誰・組込みビュー・フィルタ（DIM/ISOLATE）・展開レベル・統計・凡例。
 import { useMemo } from 'react';
 import { useApp } from '../store/store';
+import { selectCpm } from '../store/selectors';
 import {
   deriveVisibleGraph,
   DISCIPLINES,
@@ -19,10 +20,19 @@ export function LeftPanel() {
   const tasks = useApp((s) => s.tasks);
   const dependencies = useApp((s) => s.dependencies);
   const viewSpec = useApp((s) => s.viewSpec);
+  const dataDate = useApp((s) => s.project.dataDate);
+  const cpHighlight = useApp((s) => s.cpHighlight);
 
+  const cpm = useMemo(() => selectCpm(tasks, dependencies, dataDate), [tasks, dependencies, dataDate]);
   const stats = useMemo(
-    () => deriveVisibleGraph(tasks, dependencies, viewSpec).stats,
-    [tasks, dependencies, viewSpec],
+    () =>
+      deriveVisibleGraph(tasks, dependencies, {
+        ...viewSpec,
+        criticalTasks: cpm.criticalTasks,
+        criticalEdges: cpm.criticalEdges,
+        cpHighlight,
+      }).stats,
+    [tasks, dependencies, viewSpec, cpm, cpHighlight],
   );
   const assignees = useMemo(
     () => [...new Set(tasks.map((t) => t.assignee).filter(Boolean))].sort(),
@@ -53,7 +63,11 @@ export function LeftPanel() {
         <button className="btn" onClick={() => useApp.getState().quickMyTasks()}>
           自分のタスク
         </button>
-        <button className="btn" disabled title="CPM実装後（Phase 1 後半 PR4）">
+        <button
+          className={'btn' + (viewSpec.filter.criticalOnly ? ' on' : '')}
+          onClick={() => useApp.getState().quickCriticalOnly()}
+          title="クリティカルパス上のタスクだけを抽出（§2.8）"
+        >
           CPのみ
         </button>
         <button

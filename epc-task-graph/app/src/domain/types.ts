@@ -113,6 +113,10 @@ export interface ViewSpec {
   collapsedWbs: string[];
   focus: FocusSpec | null;
   me: string;
+  // ---- CPM 導出値の受け皿（非永続・§5.1/§9.2）。derive 時に注入される ----
+  criticalTasks?: Set<string>; // isCritical=true のタスク（criticalOnly フィルタ・CP強調に使用）
+  criticalEdges?: Set<string>; // 駆動依存の dependency.id（CP強調に使用）
+  cpHighlight?: boolean; // CP強調トグルが ON か（ON の時だけ視覚 critical フラグを立てる）
 }
 
 export interface DisciplineBreakdown {
@@ -132,6 +136,7 @@ export interface VisibleTaskNode {
   isOrigin: boolean;
   directPred: boolean;
   directSucc: boolean;
+  critical: boolean; // CP強調 ON かつクリティカルなタスク（§2.11/§9.2）
 }
 
 export interface VisibleAggregateNode {
@@ -159,6 +164,7 @@ export interface VisibleEdge {
   continuation?: boolean;
   count: number;
   highlight: boolean;
+  critical: boolean; // CP強調 ON かつ駆動依存（§2.11/§9.2）
   realId?: string;
 }
 

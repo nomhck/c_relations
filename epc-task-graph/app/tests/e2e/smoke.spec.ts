@@ -86,3 +86,43 @@ test('4,000デモ生成→ISOLATEフィルタで可視数が大幅に減る（§
     })
     .toBeLessThan(2000);
 });
+
+test('CPのみ表示で背骨チェーンが抽出される（§9.2 / PR4）', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => !!(window as any).__APP);
+
+  // 余裕ありのダイヤ A(2)→B(4)→D(1), A→C(2)→D を作る（背骨=A,B,D、C は TF=2 で除外）。
+  await page.evaluate(async () => {
+    const app = (window as any).__APP;
+    await app.getState().newProject('CPテスト');
+    const s = () => app.getState();
+    const A = s().addTask({ name: 'A', durationDays: 2, position: { x: 0, y: 0 } }, { edit: false });
+    const B = s().addTask({ name: 'B', durationDays: 4, position: { x: 220, y: 0 } }, { edit: false });
+    const C = s().addTask({ name: 'C', durationDays: 2, position: { x: 220, y: 160 } }, { edit: false });
+    const D = s().addTask({ name: 'D', durationDays: 1, position: { x: 440, y: 0 } }, { edit: false });
+    s().addDependencyChecked(A.id, B.id);
+    s().addDependencyChecked(B.id, D.id);
+    s().addDependencyChecked(A.id, C.id);
+    s().addDependencyChecked(C.id, D.id);
+  });
+
+  // 全4タスクが揃うのを待つ
+  await expect.poll(async () => (await counts(page)).tasks).toBe(4);
+
+  // 「CPのみ」ビュー適用 → 背骨（A,B,D）の3ノードだけが表示される
+  await page.getByRole('button', { name: 'CPのみ' }).click();
+  await expect
+    .poll(async () => {
+      const txt = await page.getByTestId('visible-count').innerText();
+      const m = txt.match(/表示ノード:\s*(\d+)/);
+      return m ? Number(m[1]) : -1;
+    })
+    .toBe(3);
+
+  // クリティカル強調（赤ノード）が描画される
+  await expect(page.locator('.task-node.critical').first()).toBeVisible();
+
+  // ヘッダの完了日サマリが実値を表示（—未計算ではない）
+  const completion = await page.getByTestId('completion').innerText();
+  expect(completion).toMatch(/完了日:\s*\d{4}-\d{2}-\d{2}/);
+});

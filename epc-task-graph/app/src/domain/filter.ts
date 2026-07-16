@@ -17,7 +17,12 @@ export function isFilterActive(f: GraphFilter | null | undefined): boolean {
   );
 }
 
-export function matchesFilter(t: Task, f: GraphFilter | null | undefined, me: string): boolean {
+export function matchesFilter(
+  t: Task,
+  f: GraphFilter | null | undefined,
+  me: string,
+  criticalTasks?: Set<string> | null,
+): boolean {
   if (!f) return true;
   if (
     f.wbsPrefixes &&
@@ -32,7 +37,8 @@ export function matchesFilter(t: Task, f: GraphFilter | null | undefined, me: st
   }
   if (f.statuses && f.statuses.length && !f.statuses.includes(t.status)) return false;
   if (f.milestonesOnly && !t.isMilestone) return false;
-  if (f.criticalOnly) return false; // CPM 未実装（Phase 1 前半）
+  // criticalOnly: CpmResult の criticalTasks を参照（§9.2）。未提供時は空扱いで除外。
+  if (f.criticalOnly && !(criticalTasks && criticalTasks.has(t.id))) return false;
   if (f.text && f.text.trim()) {
     const q = f.text.trim().toLowerCase();
     if (

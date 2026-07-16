@@ -34,6 +34,10 @@ export function deriveVisibleGraph(
   const collapsedWbs = (viewSpec && viewSpec.collapsedWbs) || [];
   const focus = (viewSpec && viewSpec.focus) || null;
   const me = (viewSpec && viewSpec.me) || '';
+  const criticalTasks = (viewSpec && viewSpec.criticalTasks) || null;
+  const criticalEdges = (viewSpec && viewSpec.criticalEdges) || null;
+  // CP強調は「トグル ON」かつ「criticalTasks が渡っている」時のみ視覚フラグを立てる。
+  const cpHighlight = !!(viewSpec && viewSpec.cpHighlight) && !!criticalTasks;
 
   const taskById = new Map<string, Task>();
   for (const t of tasks) taskById.set(t.id, t);
@@ -41,7 +45,7 @@ export function deriveVisibleGraph(
 
   const active = isFilterActive(filter);
   const matchSet = new Set<string>();
-  if (active) for (const t of tasks) if (matchesFilter(t, filter, me)) matchSet.add(t.id);
+  if (active) for (const t of tasks) if (matchesFilter(t, filter, me, criticalTasks)) matchSet.add(t.id);
 
   let nb: ReturnType<typeof neighborhood> | null = null;
   if (focus && focus.taskId && taskById.has(focus.taskId)) {
@@ -101,6 +105,7 @@ export function deriveVisibleGraph(
         isOrigin: !!c.isOrigin,
         directPred: !!c.directPred,
         directSucc: !!c.directSucc,
+        critical: cpHighlight && criticalTasks!.has(c.task.id),
       });
     }
   }
@@ -109,7 +114,8 @@ export function deriveVisibleGraph(
     let sx = 0,
       sy = 0,
       sp = 0,
-      hasMs = false;
+      hasMs = false,
+      hasCrit = false;
     const disc: DisciplineBreakdown = { E: 0, P: 0, C: 0, OTHER: 0 };
     for (const m of members) {
       sx += m.task.position.x;
@@ -117,6 +123,7 @@ export function deriveVisibleGraph(
       sp += m.task.progress;
       disc[m.task.discipline] = (disc[m.task.discipline] || 0) + 1;
       if (m.task.isMilestone) hasMs = true;
+      if (criticalTasks && criticalTasks.has(m.task.id)) hasCrit = true;
     }
     const n = members.length;
     nodeMap.set(aggId, {
@@ -129,7 +136,7 @@ export function deriveVisibleGraph(
       disc,
       avgProgress: Math.round(sp / n),
       hasMilestone: hasMs,
-      hasCritical: false,
+      hasCritical: hasCrit,
       dim: members.every((m) => m.dim),
     });
   }
@@ -145,11 +152,12 @@ export function deriveVisibleGraph(
     const isAgg = a.startsWith('wbs::') || b.startsWith('wbs::');
     let e = edgeMap.get(key);
     if (!e) {
-      e = { id: 'e::' + key, source: a, target: b, aggregate: isAgg, count: 0, highlight: false, realId: d.id };
+      e = { id: 'e::' + key, source: a, target: b, aggregate: isAgg, count: 0, highlight: false, critical: false, realId: d.id };
       edgeMap.set(key, e);
     }
     e.count++;
     if (nb && (d.predecessorId === focus!.taskId || d.successorId === focus!.taskId)) e.highlight = true;
+    if (cpHighlight && criticalEdges && criticalEdges.has(d.id)) e.critical = true;
   }
 
   // フォーカスの continuation 集約（§2.9「折り畳み先への継続がバッジで見える」）。
@@ -219,6 +227,7 @@ export function deriveVisibleGraph(
           continuation: true,
           count: n,
           highlight: false,
+          critical: false,
         });
       for (const rep of g.in)
         edgeMap.set(key + '->' + rep, {
@@ -229,6 +238,7 @@ export function deriveVisibleGraph(
           continuation: true,
           count: n,
           highlight: false,
+          critical: false,
         });
     }
   }

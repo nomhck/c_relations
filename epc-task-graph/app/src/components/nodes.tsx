@@ -19,7 +19,10 @@ export const TaskNode = memo(function TaskNode({ id, data }: NodeProps) {
 
   if (lod && !editing) {
     return (
-      <div className="lod-node" style={{ background: color, opacity: n.dim ? 0.2 : n.outside ? 0.5 : 1 }}>
+      <div
+        className={'lod-node' + (n.critical ? ' critical' : '')}
+        style={{ background: color, opacity: n.dim ? 0.2 : n.outside ? 0.5 : 1 }}
+      >
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
       </div>
@@ -32,6 +35,7 @@ export const TaskNode = memo(function TaskNode({ id, data }: NodeProps) {
     n.dim ? 'dim' : '',
     n.outside ? 'outside' : '',
     n.isOrigin ? 'origin' : '',
+    n.critical ? 'critical' : '',
     selected ? 'sel' : '',
   ]
     .filter(Boolean)
@@ -87,7 +91,7 @@ export const MilestoneNode = memo(function MilestoneNode({ id, data }: NodeProps
   return (
     <div className="ms-wrap">
       <Handle type="target" position={Position.Left} />
-      <div className={'ms-node' + (selected ? ' sel' : '')} />
+      <div className={'ms-node' + (selected ? ' sel' : '') + (n.critical ? ' critical' : '')} />
       <div className="ms-label">{t.name}</div>
       <Handle type="source" position={Position.Right} />
     </div>
@@ -144,6 +148,7 @@ export const AggregateNode = memo(function AggregateNode({ id, data }: NodeProps
         {seg(n.disc.OTHER, 'OTHER')}
       </div>
       {n.hasMilestone ? <span className="agg-badges">🚩</span> : null}
+      {n.hasCritical ? <span className="agg-badges cp" title="内部にクリティカルタスクあり">◆CP</span> : null}
       <Handle type="source" position={Position.Right} />
     </div>
   );

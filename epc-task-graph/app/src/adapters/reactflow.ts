@@ -28,11 +28,14 @@ export function toRFEdges(vedges: VisibleEdge[]): Edge[] {
     deletable: !e.aggregate,
     data: { realId: e.realId, aggregate: e.aggregate },
     label: e.aggregate && e.count > 1 ? String(e.count) : undefined,
-    style: e.highlight
-      ? { stroke: '#dc2626', strokeWidth: 2.4 }
-      : e.aggregate
-        ? { stroke: '#94a3b8', strokeDasharray: '6 4' }
-        : { stroke: '#64748b' },
+    // クリティカル（駆動依存）は赤系太線で最優先強調（§2.11）。次いでフォーカス強調。
+    style: e.critical
+      ? { stroke: '#dc2626', strokeWidth: 3 }
+      : e.highlight
+        ? { stroke: '#f97316', strokeWidth: 2.4 }
+        : e.aggregate
+          ? { stroke: '#94a3b8', strokeDasharray: '6 4' }
+          : { stroke: '#64748b' },
   }));
 }
 

@@ -1,11 +1,15 @@
-// 右パネル（§2.9）: 属性フォーム＋依存（先行/後続）＋WBS（親/兄弟）＋CPM欄（未計算）。
+// 右パネル（§2.9）: 属性フォーム＋依存（先行/後続）＋WBS（親/兄弟）＋CPM欄（ES/EF/LS/LF/TF）。
+import { useMemo } from 'react';
 import { useApp } from '../store/store';
+import { selectCpm } from '../store/selectors';
 import { DISCIPLINES, STATUSES, wbsPath, type Dependency, type Task } from '../domain';
 
 export function RightPanel() {
   const task = useApp((s) => s.tasks.find((t) => t.id === s.selection.taskId));
   const deps = useApp((s) => s.dependencies);
   const tasks = useApp((s) => s.tasks);
+  const dataDate = useApp((s) => s.project.dataDate);
+  const cpm = useMemo(() => selectCpm(tasks, deps, dataDate), [tasks, deps, dataDate]);
 
   if (!task)
     return (
@@ -133,10 +137,29 @@ export function RightPanel() {
         </div>
       ))}
 
-      <h3>CPM（Phase 1 前半では持つだけ・未計算）</h3>
-      <div className="stat">
-        ES/EF/LS/LF/TF/isCritical: <b>—（未計算）</b>
-      </div>
+      <h3>CPM（Step1: 暦日・FS）</h3>
+      {(() => {
+        const r = cpm.byTask.get(task.id);
+        if (!r) return <div className="stat">—（未計算）</div>;
+        return (
+          <>
+            <div className="stat">
+              ES <b>{r.esDate}</b>（+{r.es}d） · EF <b>{r.efDate}</b>（+{r.ef}d）
+            </div>
+            <div className="stat">
+              LS <b>{r.lsDate}</b>（+{r.ls}d） · LF <b>{r.lfDate}</b>（+{r.lf}d）
+            </div>
+            <div className="stat">
+              トータルフロート（TF）: <b>{r.totalFloat}日</b>{' '}
+              {r.isCritical ? (
+                <span style={{ color: '#dc2626', fontWeight: 700 }}>◆ クリティカル</span>
+              ) : r.totalFloat <= 5 ? (
+                <span style={{ color: '#d97706', fontWeight: 700 }}>準クリティカル</span>
+              ) : null}
+            </div>
+          </>
+        );
+      })()}
       <div className="meta-line" style={{ marginTop: 8 }}>
         rev {task.rev} · 更新 {task.updatedBy} · {task.updatedAt.slice(0, 16).replace('T', ' ')}
       </div>
