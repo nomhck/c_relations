@@ -1,7 +1,37 @@
+# EPC タスク依存関係グラフエディタ
+
+EPCプロジェクト（設計/調達/施工）のタスク依存関係をノードグラフ上で編集する社内Webツール。
+設計書は [`../docs/epc-task-graph-design.md`](../docs/epc-task-graph-design.md)。
+
+- **`mock/`** — Phase 0（ゼロ設定モック・単一HTML）。下記「Phase 0」参照。
+- **`app/`** — Phase 1 ローカルMVP（Vite + React18 + TypeScript）。下記「Phase 1」参照。
+
+## Phase 1 アプリ（`app/`）
+
+正式な Vite + React18 + TypeScript プロジェクト。Phase 0 モックの UI非依存純関数を
+`src/domain/`（型・Zodスキーマ・validate・seed・deriveVisibleGraph・graph）へ移植し、
+Vitest でテスト。UI は `src/components/`、React Flow 依存は `src/adapters/` に隔離
+（設計書 §3.1 撤退可能性）、状態は zustand + immer + zundo(diff)（§2.3 差分Undo/Redo）。
+
+```bash
+cd epc-task-graph/app
+npm install
+npm run dev        # 開発サーバ（http://localhost:5173）
+npm run build      # 型チェック(tsc) + 本番ビルド(dist/)
+npx vitest run     # domain 単体テスト
+npx playwright test  # スモーク（要 npx playwright install chromium）
+```
+
+Phase 1 の実装範囲（PR1〜2）: モック全機能の移植（タスクCRUD・接続/循環拒否・WBS折り畳み・
+簡易フィルタDIM/ISOLATE・近傍フォーカス・dagre整列（表示中同期＋全体Worker）・右パネル・
+4000デモ生成・localStorage自動保存・JSON入出力）＋ダーティ追跡。CPM は未計算（データ保持のみ・
+UIは「—未計算」表示）、永続化は localStorage（Dexie は次PR）。
+
+---
+
 # EPC タスク依存関係グラフエディタ — Phase 0 モック
 
-EPCプロジェクト（設計/調達/施工）のタスク依存関係をノードグラフ上で編集する社内Webツールの
-**Phase 0（ゼロ設定モック）**。設計書は [`../docs/epc-task-graph-design.md`](../docs/epc-task-graph-design.md)。
+**Phase 0（ゼロ設定モック）**。
 
 ## 開き方（3行）
 
