@@ -1,6 +1,7 @@
-# EPCタスク依存関係グラフエディタ 設計書 v1.2
+# EPCタスク依存関係グラフエディタ 設計書 v1.3
 
 > 設計: Fable(最大) / 実装: Opus/Sonnet 想定 / 2026-07-09 作成
+> v1.3 (2026-07-17): §12「多ビュー（グラフ／テーブル／ガント）」を追記。ビュー切替タブはPhase 3から前倒し（§1.3注記）。既存章の内容は不変。
 > 対象: EPC業界（Engineering / Procurement / Construction、プラント・建設）向け社内Webツール。本リポジトリ内の新規サブプロジェクト（`epc-task-graph/`、Python資産とは独立したフロントエンド主体のプロジェクト）。
 > **規模前提: 1プロジェクト4,000タスク以上（将来さらに増加、設計上の余裕は10,000）。複数人利用の可能性あり（段階導入）。この2つを第一級の制約として全章に織り込む。**
 
@@ -76,6 +77,7 @@ EPCプロジェクトのタスク依存関係を**ノードグラフ上で直感
 └────────────┴───────────────────────────┴───────────────┘
 ```
 Phase 3でヘッダにビュー切替タブ「ネットワーク | ガント」を追加。
+※ v1.3追記: ビュー切替タブは§12の多ビュー器（View Shell）として前倒しし「グラフ | テーブル | ガント」の3タブ構成にする。テーブルビューが先行（§12.3）、ガントはPhase 3のまま（§12.4）。
 
 ## 2. UX/インタラクション設計（本ツールの肝）
 
@@ -589,7 +591,7 @@ type PatchResult =
 - Phase 2（Step2-3）: 依存タイプ/lag/制約/カレンダー対応で数値が本物になる。ノードES〜EF日付表示、準クリティカル（TF≤閾値、既定5日）の橙段階表示、集約ノード/俯瞰へのCPバッジ・経路表示。
 
 ### 9.3 ガントビュー（Phase 3）
-- ヘッダタブでネットワーク⇔ガント切替。**同一ストア・同一CpmResultMap・同一フィルタ/折り畳み状態の別ビュー**（絞り込み体験が両ビューで一貫）。編集はまず閲覧＋バー端ドラッグでduration変更程度から。
+- ヘッダタブでネットワーク⇔ガント切替（v1.3: タブの器・行集合・行仮想化は§12の多ビュー基盤として先行整備する。ガントとの接続契約は§12.4）。**同一ストア・同一CpmResultMap・同一フィルタ/折り畳み状態の別ビュー**（絞り込み体験が両ビューで一貫）。編集はまず閲覧＋バー端ドラッグでduration変更程度から。
 - 実装方式: ①自前SVG/Canvas（行=タスク、CPM結果から座標計算は自明。依存矢印も自前）②`gantt-task-react`等の既製（4,000行に耐える行仮想化を持つものが少なくメンテも不安定）。**推奨は①自前**——行仮想化（@tanstack/virtual）必須で、既製より制御しやすい。Phase 3冒頭に半日スパイクで最終判断。
 - 表示要件: WBS順ソート・WBSグループ行（折り畳み連動）・工種色・進捗塗り・クリティカル赤・依存矢印・マイルストーン菱形・今日線・月/週ヘッダ・行/横スクロール仮想化。
 
@@ -650,8 +652,194 @@ type PatchResult =
 9. **MSPDIの方言と容量**: バージョン差でXML細部が揺れる＋4,000行で10MB級 → 実機サンプル駆動で実装＋パースWorker化を実測判断。
 10. **「全量ロード」の限界**: 5万ノード級・多人数高頻度編集が現実になったら部分ロード＋差分購読へ再設計。現要件（〜10,000ノード・WBS分担・L1/L2）では差分保存までで足りると判断。判断根拠ごと本書に残す。
 
+## 12. 多ビュー（グラフ／テーブル／ガント）— v1.3追記
+
+> 背景: Phase 1で実装済みなのはグラフビュー単独（フィルタDIM/ISOLATE・WBS折り畳み・近傍フォーカス・CPM Step1＋`selectCpm`メモ化セレクタ・複数プロジェクト・Dexie差分永続化・保存ビュー）。一方、EPC担当が日常的に「読む」のは表とガントであり、グラフは「編集と依存理解」の面。参考にした多ビュー型モックの見えやすさの正体もテーブルとガントにある。**4,000ノード基盤（表示パイプライン・domain純関数・CpmResult）とデータモデル（§5）はそのまま活かし、読取面としてテーブル（最優先）とガント（Phase 3のまま）を同じ器に差す。** スキーマ変更なし（schemaVersion据え置き）。
+
+### 12.1 原則（既存原則の適用）
+1. **ビューは表示層のみ・状態はzustand一元**（§7.4の延長）: 選択・GraphFilter・DIM/ISOLATE・折り畳み・近傍フォーカス・CP強調・現在プロジェクト・dataDateは**全ビュー共有の単一状態**。ビュー固有に持ってよいのは「読み方」の状態（ソート・表示列・スクロール位置・編集中セル）だけ。フィルタや選択をビューごとに複製しない——複製した瞬間に「表とグラフで見えているものが違う」事故が始まる。
+2. **行集合はdomain純関数が決める**: グラフの`deriveVisibleGraph`と**対になる`deriveTableRows`を新設**（§12.3.1）。`deriveVisibleGraph`には依存させない——グラフの出力は「集約ノード＋エッジ」、テーブルの出力は「ツリー行の平坦列」で形が違う。共有するのは入力（`ViewSpec`）と下位純関数（`matchesFilter`／`neighborhood`／`wbs.ts`ヘルパー／`selectCpm`）。
+3. **描画ライブラリは隔離層越し**（§3.1と同じ規律）: 仮想スクロールは`@tanstack/react-virtual`を`components/table/`内に閉じ、domain/storeは非依存。React Flowをadaptersに閉じたのと同型。
+4. **4,000行で滑らかが受入基準**: 仮想スクロール必須。DOM行数は視界＋オーバースキャンの数十行のみ（§12.3.3の性能予算）。
+
+### 12.2 View Shell（多ビューの器）
+- **タブ**: ヘッダに「グラフ | テーブル | ガント」。ガントタブはPhase 3までdisabled表示（機能の存在を最初から見せる——CPボタンと同じ流儀§2.8）。タブショートカットはMVPではクリックのみ（既存キー`1`〜`3`は展開レベルで使用済み。割当はPR-T2で検討）。
+- **ストア追加**（すべてUndo対象外・Dexie非永続。`viewSpec`同様の表示状態）:
+```ts
+// AppState 追加
+activeView: 'graph' | 'table' | 'gantt';   // localStorage 'epc-app-active-view' に記憶（LS_MEと同流儀）
+tableSort: TableSort[];                    // 多重ソート（最大3キー）。既定 []（=WBS自然順）
+tableColumns: TableColumnKey[];            // 表示列。localStorage 'epc-app-table-columns' に記憶
+// アクション（§7.4 直接setState禁止lintに従い、新設はこの6個のみ）
+setActiveView(v: ActiveView): void;
+setTableSort(sort: TableSort[]): void;
+toggleTableSort(key: TableSortKey, additive: boolean): void; // クリック=単独 asc→desc→解除 / Shift+クリック=キー追加
+toggleTableColumn(key: TableColumnKey): void;
+revealTask(taskId: string): void;  // wbsPath()で祖先WBSプレフィックスを列挙しcollapsedWbsから除去＋選択。
+                                   // ビュー切替時の「選択対象を必ず見せる」の共通実装（検索ジャンプ§2.6にも将来流用）
+```
+- **マウント戦略**: グラフ（React Flow）とテーブルは**両方マウントしたまま非アクティブ側を`display:none`**で隠す（レイアウト計算が止まり最も軽い。DOMはグラフ=表示中数百ノード・テーブル=数十行のみで常駐コストは無視できる）。復帰時に`fitView`は呼ばない（ビューポート保持）。テーブル側はvirtualizerがコンテナサイズ0の間も破綻しないが、復帰時に`measure()`を1回呼ぶ。**「タブ往復でグラフのビューポート・テーブルのスクロール位置・選択がすべて保たれる」を受入基準にする**（§12.6）。
+- **選択・フィルタ同期の仕様**（表で確定。実装の大半は「状態が共有されているので何もしない」で済む）:
+
+| 操作 | 効果 |
+|---|---|
+| テーブルのタスク行クリック | `selection.taskId`=当該行（グラフのノード選択と同一状態）。右パネルが開く（両ビュー共通） |
+| テーブルのWBS行クリック | `selection.aggId`=`'wbs::'+prefix`（集約ノード選択とID規約を共有） |
+| グラフで選択→テーブルへ切替 | 該当行へ`scrollToIndex`。祖先WBSが折り畳み中なら`revealTask`で自動展開 |
+| テーブルで選択→グラフへ切替 | `revealTask`＋選択ノードへパン（センタリングのみ。fitViewはしない） |
+| テーブル行の「⌖ 近傍」ボタン / `H` | `toggleFocus(taskId)`＋`setActiveView('graph')`——「表で見つけて図で前後を辿る」最頻動線 |
+| フィルタ／組込みビュー／保存ビュー適用 | `viewSpec`共有のため両ビューへ同時反映（**追加実装ゼロ**。`quickMyTasks`/`quickCriticalOnly`/SavedView適用は現行コードのまま効く） |
+| WBS折り畳み | `collapsedWbs`共有。テーブルの▸/▾＝グラフの集約/展開と完全連動 |
+| CP強調トグル | グラフ=赤太線、テーブル=CP列の旗＋行の赤アクセント（同じ`cpHighlight`を参照） |
+- **左右パネルは全ビュー共通で残す**: 左パネル（フィルタ・保存ビュー・WBSツリー）と右パネル（属性フォーム・依存(先行/後続)ナビ・WBSナビ）はビュー非依存の資産。特に右パネルの依存欄が、テーブルビューにおける依存参照/編集経路になる（§12.3.6）。
+
+### 12.3 テーブルビュー詳細設計（最優先）
+
+#### 12.3.1 行導出 `deriveTableRows`（`domain/deriveTableRows.ts`・純関数・Vitest必須）
+```
+deriveTableRows(tasks, deps, viewSpec, sort, cpmByTask) → { rows: TableRow[], stats }
+  viewSpec: 既存 ViewSpec をそのまま受ける（filter / displayMode / collapsedWbs / focus / me /
+            criticalTasks）。cpmByTask は selectCpm().byTask（CPM列の表示とソートに使用。null可）
+
+段1 フィルタ判定: matchesFilter を再利用（§2.8。criticalOnly は viewSpec.criticalTasks 参照）
+段2 近傍フォーカス: viewSpec.focus 有効時は neighborhood（graph.ts）で行集合を絞る。
+     グラフと同じ真実性規約（§2.9）: 探索は全依存グラフ・フィルタ外の近傍は outside=true の淡色行
+段3 WBSツリー化: wbsCode プレフィックスで木を構築（wbs.ts に buildWbsTree を追加。既存関数は不変）。
+     中間プレフィックスごとに WBS グループ行（kind:'wbs'）、配下にタスク行（kind:'task'）。
+     wbsCode 未設定タスクはルート直下（§2.7と同じ）。
+     DIM: 非マッチ行を残し dim=true ／ ISOLATE: 非マッチ除去＋空になった枝を除去＋
+     マッチを含む枝は自動展開（deriveVisibleGraph 段2と同じ規則）
+段4 折り畳み: collapsedWbs 配下のタスク行・子WBS行を出力せず、WBS行に collapsed=true＋
+     memberCount（フィルタ後件数）＋hasCritical/hasMilestone（集約ノード§2.7と同じ意味論）
+段5 ソート: 兄弟集合内で多重ソート（**ツリー構造は常に保持**——木を壊すフラット全体ソートはしない。
+     フラットな並べ替えが欲しい場面は ISOLATE＋全展開が実質代替）。既定は wbsCode 自然順
+     （セグメント数値比較: "1.10" は "1.9" の後）。CPM列(es/ef/ls/lf/tf)は cpmByTask 参照・null時は末尾
+段6 DFS平坦化: depth 付き TableRow[]（仮想スクロールに渡す1次元配列）
+
+計算量: O(V log V)（ソート支配）。4,000タスク＋WBS行で <30ms 目標。
+```
+```ts
+type ActiveView = 'graph' | 'table' | 'gantt';
+type TableColumnKey =
+  | 'wbsCode' | 'name' | 'wbsPath' | 'discipline' | 'assignee' | 'status' | 'progress'
+  | 'durationDays' | 'es' | 'ef' | 'ls' | 'lf' | 'totalFloat' | 'critical' | 'deps';
+type TableSortKey = Exclude<TableColumnKey, 'deps'>;
+interface TableSort { key: TableSortKey; dir: 'asc' | 'desc' }
+interface TableRow {
+  kind: 'wbs' | 'task';
+  id: string;              // task.id ／ 'wbs::'+prefix（グラフ集約ノードとID規約を共有→選択同期に直結）
+  depth: number;           // インデント段
+  // kind:'wbs'
+  wbsPrefix?: string; collapsed?: boolean; memberCount?: number;
+  hasCritical?: boolean; hasMilestone?: boolean; avgProgress?: number;
+  // kind:'task'
+  task?: Task; dim?: boolean; outside?: boolean;
+  predCount?: number; succCount?: number;   // buildAdjacency から O(1)
+}
+```
+- **メモ化**: `store/selectors.ts`に`selectTableRows`を追加（`selectCpm`と同型のモジュールキャッシュ。キーは`tasks`/`deps`/`viewSpec`/`sort`/`cpm`の**参照**。immerが変更時のみ参照を差し替えるため成立——既存`selectCpm`と同じ根拠）。
+
+#### 12.3.2 列仕様
+| 列 | 内容 / 表示 | ソート | インライン編集 | 既定 |
+|---|---|---|---|---|
+| WBSコード | `task.wbsCode`（等幅フォント） | ○（自然順） | ✕（MVP。ツリー再配置を伴うため右パネル経由。PR-T2で再検討） | 表示 |
+| タスク名 | インデント＋▸/▾（WBS行）＋菱形アイコン（milestone） | ○ | ○ text | 表示（左固定） |
+| WBSパス | 「1 › 1.2 › 1.2.3」全パス文字列 | ○ | ✕ | 非表示（ツリーが同情報を担う。ソート後のフラット読み用） |
+| 工種 | E/P/C/OTHER カラーチップ（§2.11の色） | ○ | ○ select | 表示 |
+| 担当（部署） | `assignee`（部署名運用・§7.5） | ○ | ○ text＋datalist（既存assignee値を候補提示） | 表示 |
+| ステータス | バッジ（§2.11の色規約） | ○ | ○ select | 表示 |
+| 進捗 | %＋ミニバー | ○ | ○ number 0-100 | 表示 |
+| duration | 日数。milestoneは0固定 | ○ | ○ number ≥0（milestone行は編集不可） | 表示 |
+| ES / EF | `cpm.esDate`/`efDate`（yyyy-mm-dd。未計算時「—」） | ○ | ✕（導出値・§5.1） | 表示 |
+| LS / LF | 同上 | ○ | ✕ | 非表示 |
+| TF | `totalFloat`（日）。TF≤0=赤・TF≤5=橙（準クリティカル閾値§2.11と共通） | ○ | ✕ | 表示 |
+| CP | `isCritical`の旗（赤） | ○（CP先頭） | ✕ | 表示 |
+| 先行/後続 | 件数バッジ「◀2 ▶3」。クリックでポップオーバー（名称リスト→クリックで該当行へジャンプ） | ✕ | ✕（§12.3.6） | 表示 |
+- 列表示切替はテーブルツールバー右端の「列」メニュー（チェックリスト、`toggleTableColumn`）。localStorage記憶。
+- WBS行には集計を表示: `memberCount`・進捗平均・CP/マイルストーンバッジ（集約ノードと同じ意味論）。配下日付集計（min ES〜max EF）はPR-T2（ガントのサマリバー準備を兼ねる）。
+
+#### 12.3.3 仮想スクロール（必須）とライブラリ選定
+- **`@tanstack/react-virtual` v3を採用**（`useVirtualizer`・固定行高32px・overscan 10・ヘッダは`position: sticky`）。段6の平坦配列をインデックス描画するだけで、ツリーテーブルと仮想化が自然に両立する。
+- **TanStack Table v8（headlessテーブル）は不採用**: 列モデル・ソート・ツリー展開の状態をライブラリ側インスタンスが持つ設計で、`collapsedWbs`/`viewSpec`/`tableSort`をzustandに一元化する本設計と二重管理になる。列は十数本・機能は本章の範囲で確定しており自前列定義で足りる。仮想化だけを借りる構成はTanStack公式も標準としており（TableのVirtualizationガイドがVirtual併用を前提）、かつ**同ライブラリはガント§9.3の行仮想化でも共用**——依存1個で二役。
+- **性能予算**（受入基準）: 4,000タスクで初期表示（derive＋初回描画）<500ms、スクロール55fps級、フィルタ/ソート切替の反映<100ms、DOM行数≤50。行コンポーネントは`memo`＋最小プリミティブprops（グラフノードと同じ規律§2.6-4）。
+
+#### 12.3.4 インライン編集（すべて既存ストアアクション経由）
+- 起動: セルダブルクリック／選択行で`Enter`（名前セル）。確定: `Enter`・blur→**`updateTask(id, patch)`**——rev+1・updatedBy・ダーティ追跡・デバウンス保存・zundo履歴が既存アクションに全部付いてくる。破棄: `Esc`。**1確定=1 Undo単位**。
+- §7.4の直接setState禁止lintに従い、テーブルからの書込は既存アクション（`updateTask`/`addTask`/`deleteTasks`/`toggleCollapse`/`setSelection`/`toggleFocus`…）のみ。新設アクションは§12.2の6個だけ。
+- 入力検証はZodスキーマ（§5.2）と同じ制約をセル側で先に弾く（duration≥0、progress 0-100整数、milestoneのduration編集不可）。確定でCPMが自動再計算され（`selectCpm`の参照キャッシュが自然に無効化）、完了日サマリ・CP列・TF列が即応——結果が動いたことの即時フィードバック（§0.3-2）がテーブルでも成立する。
+- ソート中の編集: 確定後は即再ソート。選択行が視界外へ移動したら`scrollToIndex`で追従。
+
+#### 12.3.5 行の追加・削除
+- 「＋行」ボタン／キー`N`→`addTask`（wbsCode=選択行の文脈。既存`currentWbsContext`の挙動がそのまま効く）→新行の名前セルが編集状態。
+- 選択行で`Delete`→`deleteTasks`（接続依存も同時削除・Undoトースト案内は既存挙動）。MVPは単一行選択。複数行選択（Shift+クリック範囲）と一括操作はPR-T2。
+- `Tab`連続作成（後続生成）はグラフ専用のまま。テーブルでの`createSuccessor`流用はPR-T2で検討。
+
+#### 12.3.6 依存の参照（テーブルでは参照まで・編集は最小）
+- 先行/後続列のポップオーバー＝**参照とジャンプ**（行間の依存が表内で追える最小要件）。
+- 依存の追加/削除は右パネル「依存」欄（全ビュー共通・§2.9の第二経路）とグラフ接続に委ねる。**表のセルで依存を編集させない**——それは競合（MS Project/P6）の悪いUXであり本ツールの存在意義に反する（§0.3-1）。
+
+#### 12.3.7 キーボード（テーブルビュー中）
+| キー | 動作 |
+|---|---|
+| `↑`/`↓` | 行選択移動（選択はグラフと共有） |
+| `←`/`→` | WBS行: 折り畳み/展開（`toggleCollapse`）。タスク行で`←`: 親WBS行へ |
+| `Enter` | 名前セル編集開始。編集中`Enter`=確定して下の行へ |
+| `N` | 新規行（選択行のWBS文脈） |
+| `Delete` | 行削除 |
+| `H` | 当該タスクの近傍フォーカス＋グラフへ切替（§12.2） |
+| `Cmd/Ctrl+Z`/`+Shift+Z` | Undo/Redo（全ビュー共通・既存） |
+- インライン編集中はグローバルショートカット無効（§2.2の既存規律をそのまま適用）。
+
+#### 12.3.8 組込みビュー・保存ビューとの関係
+- 「自分のタスク」「CPのみ」「マイルストーン」は`viewSpec.filter`を書くだけなので**テーブルにそのまま効く**（`quickMyTasks`/`quickCriticalOnly`は実装変更ゼロ）。「CPのみ＋テーブル」＝背骨の一覧表で、PM向け説明の主力画面になる想定。
+- SavedViewへの`tableSort`/表示列の保存はPR-T2（optionalフィールド追加。未知フィールド無視で前方互換、schemaVersion据え置き）。
+
+### 12.4 ガントビューの接続点（Phase 3・ここでは器との契約のみ）
+§9.3の計画（自前SVG/Canvas推奨・半日スパイクで最終判断）は変更しない。View Shellとの契約だけ確定する:
+1. **同じView Shellの第3タブ**に差す（`activeView: 'gantt'`。§12.2の同期仕様が自動的に適用）。
+2. **行集合＝`deriveTableRows`をそのまま使う**（WBS順・折り畳み・フィルタ・ソートがテーブルと同一→ガント左ペインの表と右ペインのバーが常に同じ行並び。行導出を二重実装しない）。
+3. **バー座標＝`selectCpm().byTask`のes/ef**（オフセット×日幅。日付ヘッダは`esDate`/`addCalendarDays`）。クリティカル表示は`criticalTasks`/`criticalEdges`、今日線は`project.dataDate`。
+4. **行仮想化＝`@tanstack/react-virtual`共用**。行高はテーブルと共有定数（左右ペインのスクロール同期が単純になる）。
+つまりPhase 3の作業は「右ペインの時間軸描画」に純化される。テーブルPRの時点で、ガント用の穴（タブ・行集合・仮想化・CPM日付）はすべて開いている。
+
+### 12.5 ファイル構成と既存コードへの影響
+```
+src/domain/deriveTableRows.ts   新規（純関数＋Vitest。UI/React非依存の規律§4.2を維持）
+src/domain/wbs.ts               buildWbsTree 等ヘルパー追加（既存関数は不変）
+src/domain/types.ts             ActiveView/TableRow/TableSort/TableColumnKey 追加
+src/store/store.ts              activeView/tableSort/tableColumns＋アクション6個追加（既存アクション不変）
+src/store/selectors.ts          selectTableRows 追加（selectCpm と同型のモジュールキャッシュ）
+src/components/ViewShell.tsx    新規（タブ＋display切替。App.tsx の <CanvasArea/> をこれで包む）
+src/components/table/           新規: TableView.tsx / TableRowView.tsx / cells.tsx / ColumnMenu.tsx
+src/components/Header.tsx       タブUIの追加（or ViewShell 側にタブバー配置）
+package.json                    @tanstack/react-virtual 追加（^3系・メジャー固定）
+```
+- **変更しないもの**: `deriveVisibleGraph`・`adapters/reactflow.ts`・`CanvasArea`・`persistence.ts`/Dexie（テーブルは新規永続データを持たない。列設定等はlocalStorage）・JSONスキーマ§5.2（schemaVersion据え置き）。
+
+### 12.6 実装フェーズ分割（Opus/Sonnet向け・既存Phase番号と独立の「T系」）
+
+#### PR-T1: 多ビュー器＋テーブルMVP — 実装: **Sonnet** / `deriveTableRows`のテスト設計レビュー: **Opus**（ツリー×フィルタ×折り畳み×ソートの組合せがコーナーケースの巣のため）
+**スコープ**: View Shellタブ（ガントdisabled）／`deriveTableRows`＋`selectTableRows`＋Vitest／仮想スクロールテーブル（§12.3.2の既定列・単一キーソート・列表示切替）／選択・フィルタ・折り畳み同期（§12.2の表を全部）／インライン編集（名称/duration/ステータス/担当/工種/進捗）／行追加・削除／キーボード（`↑↓`/`←→`/`Enter`/`N`/`Delete`/`H`）
+**受入基準**:
+- (a) 4,000ノードデモでテーブル初期表示<500ms・スクロール滑らか（55fps級）・DOM行数≤50
+- (b) フィルタ/組込みビュー（自分のタスク・CPのみ）がテーブルへ<100msで反映。DIM=淡色行／ISOLATE=行除去＋マッチ枝の自動展開
+- (c) 折り畳みがグラフ⇄テーブルで完全連動（テーブルで畳む→グラフに集約ノードが現れる）
+- (d) 行選択⇄ノード選択が同期。ビュー切替時に選択対象へ自動スクロール/自動展開（`revealTask`）。タブ往復でビューポート・スクロール位置・選択が保持
+- (e) インライン編集がUndo可・自動保存（保存バッジ遷移）され、完了日サマリ・CP列・TF列が即時更新
+- (f) ES/EF/TF/CP列が`selectCpm`と一致（右パネルのTF表示と同値）
+- (g) `deriveTableRows`のVitest（ツリー化・ISOLATE枝刈り・折り畳み・wbsCode自然順・focus・CPM列ソート・wbsCode未設定タスク）＋Playwrightスモーク1本（タブ切替→行編集→グラフへ反映確認）
+- (h) lint（直接setState禁止）・既存テストすべて緑
+
+#### PR-T2: テーブル仕上げ — 実装: **Sonnet**
+多重ソート（Shift+クリック・最大3キー・ヘッダにソート順位バッジ）／複数行選択と一括操作／WBS行の日付集計（min ES〜max EF）／SavedViewへの`tableSort`・表示列保存（optionalフィールド）／wbsCodeセル編集の再検討／テーブルからの後続作成（`createSuccessor`流用）／タブショートカット割当
+
+#### PR-G（=Phase 3）: ガント — スパイク判断: **Opus** / 実装: **Sonnet**（既存計画どおり）
+§12.4の契約に乗せる。§9.3のスコープ・受入基準は不変（4,000行スクロール滑らか・CPM結果とバー位置一致・ビュー間でフィルタ/折り畳み/選択同期——同期は§12.2により自動達成見込み）。
+
 ## まず着手すべきこと
 Phase 0（`epc-task-graph/mock/index.html`）。**4,000ノードデモ生成→折り畳み→フィルタISOLATE→近傍フォーカス→編集、の一連が滑らかに動くこと**がPhase 0最大の検証ポイント（表示パイプラインという性能戦略そのものの実証。ここが通れば描画エンジンの作り直しは発生しない）。データスキーマ（§5.2、rev/updatedBy含む）とderiveVisibleGraphの純関数分離だけ厳密に守れば、残りは後から差し替え可能な構造にしてある。
+
+**（v1.3追記・現況）** Phase 0モックとPhase 1の中核（表示パイプライン・CPM Step1・Dexie差分永続化・複数プロジェクト・保存ビュー）は`epc-task-graph/app/`で稼働済み。**次の着手はPR-T1（§12.6）＝多ビュー器＋テーブルビューMVP**。ガントはその後にPhase 3（PR-G）として§12.4の接続契約に乗せる。
 
 ## ユーザーへの確認事項（2026-07-10 回答反映・確定）
 - **WBSコード体系の実態**: ✅ **維持されている見込み**（`1.2.3`形式の階層コード前提でOK）。折り畳み/分担の単位はWBSコードで進める。※実データ投入時に崩れが見つかったら§11-2のフォールバック（工種×エリア）を発動。
