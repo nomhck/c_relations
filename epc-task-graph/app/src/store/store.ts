@@ -11,6 +11,7 @@ import { temporal } from 'zundo';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
 import {
+  type ActiveView,
   type Calendar,
   type Dependency,
   type DisplayMode,
@@ -18,6 +19,9 @@ import {
   type GraphFilter,
   type ProjectMeta,
   type SavedView,
+  type TableColumnKey,
+  type TableSort,
+  type TableSortKey,
   type Task,
   type ViewSpec,
   type ViewState,
@@ -31,6 +35,7 @@ import {
   collapsedForLevel,
   allTopPrefixes,
   emptyDoc,
+  wbsPath,
 } from '../domain';
 import { runFullLayout } from '../layout/layout';
 import {
@@ -44,6 +49,43 @@ import {
 enableMapSet();
 
 const LS_ME = 'epc-app-me';
+const LS_ACTIVE_VIEW = 'epc-app-active-view';
+const LS_TABLE_COLUMNS = 'epc-app-table-columns';
+
+// 表示列の正準順（§12.3.2）。TableView はこの順で、tableColumns に含まれる列だけを描画する。
+export const ALL_TABLE_COLUMNS: TableColumnKey[] = [
+  'wbsCode',
+  'name',
+  'wbsPath',
+  'discipline',
+  'assignee',
+  'status',
+  'progress',
+  'durationDays',
+  'es',
+  'ef',
+  'ls',
+  'lf',
+  'totalFloat',
+  'critical',
+  'deps',
+];
+
+// 既定表示列（§12.3.2 「既定」列）。wbsPath / ls / lf は既定非表示。
+const DEFAULT_TABLE_COLUMNS: TableColumnKey[] = [
+  'wbsCode',
+  'name',
+  'discipline',
+  'assignee',
+  'status',
+  'progress',
+  'durationDays',
+  'es',
+  'ef',
+  'totalFloat',
+  'critical',
+  'deps',
+];
 
 export interface Selection {
   taskId: string | null;
@@ -68,6 +110,7 @@ export interface Runners {
   fitView?: () => void;
   createAtCenter?: () => void;
   layoutVisible?: () => void;
+  centerSelected?: () => void; // 選択タスクへパン（センタリングのみ・fitViewはしない、§12.2）
 }
 
 export interface AppState {
@@ -92,6 +135,11 @@ export interface AppState {
   runners: Runners;
   cpHighlight: boolean; // CP強調トグル（§2.11/§9.2）。非永続・Undo対象外
   projectList: ProjectMeta[]; // 複数プロジェクト一覧（§6.1）
+
+  // ---- 多ビュー表示状態（§12.2・Undo対象外・Dexie非永続）----
+  activeView: ActiveView; // localStorage 記憶
+  tableSort: TableSort[]; // 多重ソート（PR-T1は単一キー運用）。既定 []＝WBS自然順
+  tableColumns: TableColumnKey[]; // 表示列。localStorage 記憶
 
   // ---- アクション ----
   setRunner: (name: keyof Runners, fn: () => void) => void;
@@ -125,6 +173,13 @@ export interface AppState {
   quickMyTasks: () => void;
   quickCriticalOnly: () => void;
   toggleCpHighlight: () => void;
+
+  // ---- 多ビュー（§12.2）: 新設アクション ----
+  setActiveView: (v: ActiveView) => void;
+  setTableSort: (sort: TableSort[]) => void;
+  toggleTableSort: (key: TableSortKey, additive: boolean) => void;
+  toggleTableColumn: (key: TableColumnKey) => void;
+  revealTask: (taskId: string) => void;
 
   undo: () => void;
   redo: () => void;
@@ -232,6 +287,34 @@ function initialMe(): string {
   }
 }
 
+function initialActiveView(): ActiveView {
+  try {
+    const v = localStorage.getItem(LS_ACTIVE_VIEW);
+    if (v === 'graph' || v === 'table' || v === 'gantt') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'graph';
+}
+
+function initialTableColumns(): TableColumnKey[] {
+  try {
+    const raw = localStorage.getItem(LS_TABLE_COLUMNS);
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        const valid = parsed.filter((k): k is TableColumnKey =>
+          (ALL_TABLE_COLUMNS as string[]).includes(k as string),
+        );
+        if (valid.length) return valid;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return [...DEFAULT_TABLE_COLUMNS];
+}
+
 function currentWbsContext(): string {
   const s = useApp.getState();
   const selId = s.selection.taskId;
@@ -289,6 +372,9 @@ export const useApp = create<AppState>()(
       runners: {},
       cpHighlight: false,
       projectList: [],
+      activeView: initialActiveView(),
+      tableSort: [],
+      tableColumns: initialTableColumns(),
 
       setRunner: (name, fn) =>
         set((s) => {
@@ -547,6 +633,73 @@ export const useApp = create<AppState>()(
       toggleCpHighlight: () =>
         set((s) => {
           s.cpHighlight = !s.cpHighlight;
+        }),
+
+      // ---- 多ビュー（§12.2）: 表示状態アクション（Undo対象外・Dexie非永続）----
+      setActiveView: (v) => {
+        try {
+          localStorage.setItem(LS_ACTIVE_VIEW, v);
+        } catch {
+          /* ignore */
+        }
+        set((s) => {
+          s.activeView = v;
+        });
+      },
+      setTableSort: (sort) =>
+        set((s) => {
+          s.tableSort = sort;
+        }),
+      // ヘッダクリック=単独 asc→desc→解除／Shift+クリック=キー追加（PR-T1は単一運用が主）。
+      toggleTableSort: (key, additive) =>
+        set((s) => {
+          const cur = s.tableSort;
+          const idx = cur.findIndex((x) => x.key === key);
+          if (!additive) {
+            if (idx === -1) {
+              s.tableSort = [{ key, dir: 'asc' }];
+            } else if (cur[idx].dir === 'asc') {
+              s.tableSort = [{ key, dir: 'desc' }];
+            } else {
+              s.tableSort = []; // desc の次は解除（＝WBS自然順へ戻る）
+            }
+            return;
+          }
+          // 追加（Shift+クリック）: 既存キーはトグル、無ければ末尾に追加（最大3キー）。
+          const next = [...cur];
+          if (idx === -1) {
+            if (next.length < 3) next.push({ key, dir: 'asc' });
+          } else if (next[idx].dir === 'asc') {
+            next[idx] = { key, dir: 'desc' };
+          } else {
+            next.splice(idx, 1);
+          }
+          s.tableSort = next;
+        }),
+      toggleTableColumn: (key) => {
+        set((s) => {
+          const has = s.tableColumns.includes(key);
+          s.tableColumns = has
+            ? s.tableColumns.filter((k) => k !== key)
+            : ALL_TABLE_COLUMNS.filter((k) => k === key || s.tableColumns.includes(k));
+        });
+        try {
+          localStorage.setItem(LS_TABLE_COLUMNS, JSON.stringify(get().tableColumns));
+        } catch {
+          /* ignore */
+        }
+      },
+      // 選択対象を必ず見せる（§12.2）: 祖先WBSプレフィックスを collapsedWbs から除去＋選択。
+      // 'wbs::'+prefix のID規約は集約ノードと共有。検索ジャンプ（§2.6）にも将来流用。
+      revealTask: (taskId) =>
+        set((s) => {
+          const t = s.tasks.find((x) => x.id === taskId);
+          if (!t) return;
+          const ancestors = new Set(wbsPath(t.wbsCode));
+          const collapsedWbs = s.viewSpec.collapsedWbs.filter((p) => !ancestors.has(p));
+          s.viewSpec.collapsedWbs = collapsedWbs;
+          s.viewState.collapsedWbs = collapsedWbs;
+          s.selection = { taskId, edgeId: null, aggId: null };
         }),
 
       // ---- Undo / Redo（zundo temporal 経由。戻した行もダーティ扱い、§2.3）----

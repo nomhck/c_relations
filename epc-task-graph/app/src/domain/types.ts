@@ -193,6 +193,68 @@ export interface Neighborhood {
   directSucc: Set<string>;
 }
 
+// ---- 多ビュー（§12）: テーブル/ガントの器で共有する表示状態と行導出の型 ----
+
+export type ActiveView = 'graph' | 'table' | 'gantt';
+
+// 表示列キー（§12.3.2）。'deps' は参照専用でソート対象外。
+export type TableColumnKey =
+  | 'wbsCode'
+  | 'name'
+  | 'wbsPath'
+  | 'discipline'
+  | 'assignee'
+  | 'status'
+  | 'progress'
+  | 'durationDays'
+  | 'es'
+  | 'ef'
+  | 'ls'
+  | 'lf'
+  | 'totalFloat'
+  | 'critical'
+  | 'deps';
+
+export type TableSortKey = Exclude<TableColumnKey, 'deps'>;
+
+export interface TableSort {
+  key: TableSortKey;
+  dir: 'asc' | 'desc';
+}
+
+// deriveTableRows（§12.3.1 段6）の出力: 木を DFS 平坦化した1次元行配列の1要素。
+export interface TableRow {
+  kind: 'wbs' | 'task';
+  id: string; // task.id ／ 'wbs::'+prefix（グラフ集約ノードとID規約を共有）
+  depth: number; // インデント段
+  // kind:'wbs'
+  wbsPrefix?: string;
+  collapsed?: boolean;
+  memberCount?: number;
+  hasCritical?: boolean;
+  hasMilestone?: boolean;
+  avgProgress?: number;
+  // kind:'task'
+  task?: Task;
+  dim?: boolean;
+  outside?: boolean;
+  predCount?: number;
+  succCount?: number;
+}
+
+export interface TableStats {
+  total: number; // 全タスク数
+  rows: number; // 出力行数
+  taskRows: number;
+  wbsRows: number;
+  matched: number; // フィルタ一致タスク数
+}
+
+export interface TableResult {
+  rows: TableRow[];
+  stats: TableStats;
+}
+
 export type ConnectReason = 'self' | 'duplicate' | 'cycle' | null;
 
 export interface ConnectResult {
