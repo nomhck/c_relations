@@ -3,7 +3,7 @@ import { useApp } from '../store/store';
 import { Header, Breadcrumb } from './Header';
 import { LeftPanel } from './LeftPanel';
 import { RightPanel } from './RightPanel';
-import { CanvasArea } from './CanvasArea';
+import { ViewShell } from './ViewShell';
 
 function Toasts() {
   const toast = useApp((s) => s.toast);
@@ -26,7 +26,7 @@ export function App() {
         <Breadcrumb />
         <div className="body">
           <LeftPanel />
-          <CanvasArea />
+          <ViewShell />
           <RightPanel />
         </div>
         <Toasts />

@@ -182,6 +182,14 @@ export function CanvasArea() {
       const pos = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
       useApp.getState().addTask({ position: pos });
     });
+    // 選択タスクへセンタリング（ビュー間同期・§12.2。fitView はしない＝ズーム保持）。
+    s.setRunner('centerSelected', () => {
+      const st = useApp.getState();
+      const id = st.selection.taskId;
+      if (!id) return;
+      const t = st.tasks.find((x) => x.id === id);
+      if (t) rf.setCenter(t.position.x, t.position.y, { zoom: rf.getZoom(), duration: 400 });
+    });
     s.setRunner('layoutVisible', () => {
       const der = lastDerived.current;
       const pos = dagreLayout(der.visibleNodes, der.visibleEdges);
@@ -224,6 +232,9 @@ export function CanvasArea() {
         return;
       }
       if (meta) return;
+      // 多ビュー: グラフがアクティブな時だけグラフ用ショートカットを処理（§12.2）。
+      // Undo/Redo（meta+z）は上で先に処理済みなので全ビュー共通で効く。
+      if (useApp.getState().activeView !== 'graph') return;
       switch (e.key) {
         case 'n':
         case 'N':
