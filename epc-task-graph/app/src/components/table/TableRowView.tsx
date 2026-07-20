@@ -303,10 +303,14 @@ function TableRowViewImpl({
         );
       }
     } else if (isWbs) {
-      // WBS行: 集計を出す列だけ表示。
+      // WBS行: 集計を出す列だけ表示（ES=配下の最早／EF=配下の最遅・§12.3.2 サマリ）。
       if (col === 'wbsCode') content = <span className="mono">{row.wbsPrefix}</span>;
       else if (col === 'progress') content = <ProgressBar v={row.avgProgress || 0} />;
       else if (col === 'critical') content = row.hasCritical ? <span className="cp-mark">▲</span> : null;
+      else if (col === 'es')
+        content = <span className="mono wbs-agg">{row.esMin || '—'}</span>;
+      else if (col === 'ef')
+        content = <span className="mono wbs-agg">{row.efMax || '—'}</span>;
       else content = null;
     } else if (task) {
       switch (col) {

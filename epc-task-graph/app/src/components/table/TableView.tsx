@@ -195,6 +195,16 @@ export function TableView({ active }: { active: boolean }) {
           }
           break;
         }
+        case 'Tab': {
+          // 後続作成（§12.3.5・createSuccessor 流用）。選択タスクの後続を作り名前セルを編集開始。
+          if (s.selection.taskId) {
+            e.preventDefault();
+            s.createSuccessor(s.selection.taskId);
+            const newId = useApp.getState().selection.taskId; // createSuccessor が新タスクを選択済み
+            if (newId) setEdit({ id: newId, col: 'name' });
+          }
+          break;
+        }
         case 'n':
         case 'N': {
           e.preventDefault();

@@ -234,6 +234,8 @@ export interface TableRow {
   hasCritical?: boolean;
   hasMilestone?: boolean;
   avgProgress?: number;
+  esMin?: string | null; // WBS配下の最早ES日付（min ES・§12.3.2／ガントのサマリバー準備）
+  efMax?: string | null; // WBS配下の最遅EF日付（max EF）
   // kind:'task'
   task?: Task;
   dim?: boolean;

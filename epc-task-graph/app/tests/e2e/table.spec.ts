@@ -16,6 +16,12 @@ function nameOf(page: Page, id: string) {
     id,
   );
 }
+function activeView(page: Page) {
+  return page.evaluate(() => (window as any).__APP.getState().activeView);
+}
+function depsLen(page: Page) {
+  return page.evaluate(() => (window as any).__APP.getState().dependencies.length);
+}
 
 test('テーブル: タブ切替→4000→仮想化→フィルタ→選択同期→インライン編集→Undo', async ({ page }) => {
   await page.goto('/');
@@ -87,4 +93,44 @@ test('テーブル: タブ切替→4000→仮想化→フィルタ→選択同�
   // ---- Undo（全ビュー共通・Cmd/Ctrl+Z）で編集が1確定=1単位で戻る ----
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
   await expect.poll(async () => await nameOf(page, rowId!)).not.toBe('テーブル編集A');
+});
+
+// 設計書 §12.6 PR-T2: ビュー切替ショートカット(g/t) / Tab後続作成 / WBS行の日付集計。
+test('テーブル: g/t切替・Tab後続作成・WBS日付集計', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => !!(window as any).__APP);
+
+  // ---- ⑦ ビュー切替ショートカット: t=テーブル / g=グラフ ----
+  await page.locator('body').click();
+  await page.keyboard.press('t');
+  await expect.poll(async () => await activeView(page)).toBe('table');
+  await expect(page.getByTestId('table-scroll')).toBeVisible();
+  await page.keyboard.press('g');
+  await expect.poll(async () => await activeView(page)).toBe('graph');
+  await page.keyboard.press('t');
+  await expect.poll(async () => await activeView(page)).toBe('table');
+
+  // ---- デモ生成（CPMが効く依存つき）----
+  await page.getByRole('button', { name: '4,000ノード生成' }).click();
+  await expect.poll(async () => await tasksLen(page)).toBe(4000);
+  await page.evaluate(() => (window as any).__APP.getState().setExpandLevel(9));
+  await expect(page.locator('.trow:not(.trow-wbs)').first()).toBeVisible();
+
+  // ---- ③ WBS行の日付集計: WBS行の ES 列が yyyy-mm-dd を表示する ----
+  const wbsEs = page.locator('.trow-wbs .tcell-es .wbs-agg').first();
+  await expect(wbsEs).toHaveText(/\d{4}-\d{2}-\d{2}/);
+
+  // ---- ⑥ Tab後続作成: タスク選択→Tab で tasks/deps が +1、新行の名前編集が開く ----
+  const firstTask = page.locator('.trow:not(.trow-wbs)').first();
+  const srcId = await firstTask.getAttribute('data-id');
+  await firstTask.click();
+  await expect.poll(async () => await selTaskId(page)).toBe(srcId);
+  const beforeT = await tasksLen(page);
+  const beforeD = await depsLen(page);
+  await page.keyboard.press('Tab');
+  await expect.poll(async () => await tasksLen(page)).toBe(beforeT + 1);
+  await expect.poll(async () => await depsLen(page)).toBe(beforeD + 1);
+  // 新タスクが選択され、名前セルの編集入力が開く。
+  await expect(page.locator('.trow input.task-name-input')).toBeVisible();
+  await page.keyboard.press('Escape');
 });

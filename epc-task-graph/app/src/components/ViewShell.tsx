@@ -10,7 +10,17 @@ import type { ActiveView } from '../domain';
 import { CanvasArea } from './CanvasArea';
 import { TableView } from './table/TableView';
 
-function Tab({ view, label, disabled }: { view: ActiveView; label: string; disabled?: boolean }) {
+function Tab({
+  view,
+  label,
+  disabled,
+  hint,
+}: {
+  view: ActiveView;
+  label: string;
+  disabled?: boolean;
+  hint?: string;
+}) {
   const active = useApp((s) => s.activeView === view);
   return (
     <button
@@ -18,9 +28,10 @@ function Tab({ view, label, disabled }: { view: ActiveView; label: string; disab
       disabled={disabled}
       data-testid={'viewtab-' + view}
       onClick={() => !disabled && useApp.getState().setActiveView(view)}
-      title={disabled ? 'Phase 3 で提供予定' : label}
+      title={disabled ? 'Phase 3 で提供予定' : hint ? `${label}（${hint}）` : label}
     >
       {label}
+      {hint ? <span className="viewtab-key">{hint}</span> : null}
       {disabled ? <span className="soon">（近日）</span> : null}
     </button>
   );
@@ -47,11 +58,32 @@ export function ViewShell() {
     if (s.selection.taskId) s.revealTask(s.selection.taskId);
   }, [activeView]);
 
+  // ビュー切替ショートカット（§12.6 PR-T2）: g=グラフ / t=テーブル。全ビュー共通。
+  // g/t はグラフ・テーブルどちらのキー処理でも未使用なので衝突しない。
+  // 編集中（input/textarea/select/contentEditable）と修飾キー併用時は無効。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement;
+      const tag = (el.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable) return;
+      if (e.key === 'g' || e.key === 'G') {
+        e.preventDefault();
+        useApp.getState().setActiveView('graph');
+      } else if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        useApp.getState().setActiveView('table');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <div className="viewshell">
       <div className="viewtabs">
-        <Tab view="graph" label="グラフ" />
-        <Tab view="table" label="テーブル" />
+        <Tab view="graph" label="グラフ" hint="G" />
+        <Tab view="table" label="テーブル" hint="T" />
         <Tab view="gantt" label="ガント" disabled />
       </div>
       <div className="viewstack">

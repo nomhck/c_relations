@@ -176,6 +176,38 @@ describe('deriveTableRows: CPM列ソート（§12.3.1 段5）', () => {
   });
 });
 
+describe('deriveTableRows: WBS行の日付集計 min ES 〜 max EF（§12.3.2）', () => {
+  // A(1.1)→B(1.2)→C(1.2)。ES: A=0,B後,C後。EF は C が最遅。
+  const A = makeTask({ name: 'A', wbsCode: '1.1', durationDays: 2 });
+  const B = makeTask({ name: 'B', wbsCode: '1.2', durationDays: 3 });
+  const C = makeTask({ name: 'C', wbsCode: '1.2', durationDays: 1 });
+  const deps = [makeDep(A.id, B.id), makeDep(B.id, C.id)];
+  const cpm = computeCpm([A, B, C], deps, '2026-01-01').byTask;
+
+  it('WBS "1" は配下の最早ES日付と最遅EF日付を集計する', () => {
+    const { rows } = deriveTableRows([A, B, C], deps, spec(), NO_SORT, cpm);
+    const w1 = rows.find((r) => r.id === 'wbs::1')!;
+    expect(w1.kind).toBe('wbs');
+    // 最早ES=A、最遅EF=C（鎖の末尾）。
+    expect(w1.esMin).toBe(cpm.get(A.id)!.esDate);
+    expect(w1.efMax).toBe(cpm.get(C.id)!.efDate);
+  });
+
+  it('子WBS "1.2" は自身の配下だけ（B,C）で集計する', () => {
+    const { rows } = deriveTableRows([A, B, C], deps, spec(), NO_SORT, cpm);
+    const w12 = rows.find((r) => r.id === 'wbs::1.2')!;
+    expect(w12.esMin).toBe(cpm.get(B.id)!.esDate); // B が 1.2 内で最早
+    expect(w12.efMax).toBe(cpm.get(C.id)!.efDate); // C が 1.2 内で最遅
+  });
+
+  it('CPM未注入なら WBS 行の日付集計は null', () => {
+    const { rows } = deriveTableRows([A, B, C], deps, spec(), NO_SORT, NO_CPM);
+    const w1 = rows.find((r) => r.id === 'wbs::1')!;
+    expect(w1.esMin).toBeNull();
+    expect(w1.efMax).toBeNull();
+  });
+});
+
 describe('deriveTableRows: 性能（§12.6 受入(a) 4,000で <30ms 目標）', () => {
   it('4,000タスク全展開で derive <30ms（中央値・ソート込み）', () => {
     const doc = seedDemo({ count: 4000, density: 1.5 });

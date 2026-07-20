@@ -32,8 +32,10 @@ interface Agg {
   sumProgress: number;
   hasCritical: boolean;
   hasMilestone: boolean;
-  minEs: number | null;
-  minEf: number | null;
+  minEs: number | null; // 最早ES（日オフセット・WBS行ソート＋日付表示に使用）
+  maxEf: number | null; // 最遅EF（日オフセット・WBS行ソート＋日付表示に使用）
+  esMinDate: string | null; // minEs に対応する暦日（WBS行の「min ES」表示・§12.3.2）
+  efMaxDate: string | null; // maxEf に対応する暦日（WBS行の「max EF」表示）
   minLs: number | null;
   minLf: number | null;
   minTf: number | null;
@@ -44,6 +46,15 @@ const cpmVal = (
   id: string,
   key: 'es' | 'ef' | 'ls' | 'lf' | 'totalFloat',
 ): number | null => {
+  const r = cpm && cpm.get(id);
+  return r ? r[key] : null;
+};
+
+const cpmDateStr = (
+  cpm: Map<string, CpmTaskResult> | null | undefined,
+  id: string,
+  key: 'esDate' | 'efDate',
+): string | null => {
   const r = cpm && cpm.get(id);
   return r ? r[key] : null;
 };
@@ -126,10 +137,27 @@ export function deriveTableRows(
       hasCritical: false,
       hasMilestone: false,
       minEs: null,
-      minEf: null,
+      maxEf: null,
+      esMinDate: null,
+      efMaxDate: null,
       minLs: null,
       minLf: null,
       minTf: null,
+    };
+    // 最早ES/最遅EF を暦日つきで畳み込む（オフセットで比較・一致した端点の日付文字列を保持）。
+    const considerEs = (off: number | null, date: string | null): void => {
+      if (off == null) return;
+      if (agg.minEs == null || off < agg.minEs) {
+        agg.minEs = off;
+        agg.esMinDate = date;
+      }
+    };
+    const considerEf = (off: number | null, date: string | null): void => {
+      if (off == null) return;
+      if (agg.maxEf == null || off > agg.maxEf) {
+        agg.maxEf = off;
+        agg.efMaxDate = date;
+      }
     };
     for (const c of node.taskChildren) {
       const t = c.task;
@@ -137,8 +165,8 @@ export function deriveTableRows(
       agg.sumProgress += t.progress;
       if (criticalTasks && criticalTasks.has(t.id)) agg.hasCritical = true;
       if (t.isMilestone) agg.hasMilestone = true;
-      agg.minEs = minN(agg.minEs, cpmVal(cpmByTask, t.id, 'es'));
-      agg.minEf = minN(agg.minEf, cpmVal(cpmByTask, t.id, 'ef'));
+      considerEs(cpmVal(cpmByTask, t.id, 'es'), cpmDateStr(cpmByTask, t.id, 'esDate'));
+      considerEf(cpmVal(cpmByTask, t.id, 'ef'), cpmDateStr(cpmByTask, t.id, 'efDate'));
       agg.minLs = minN(agg.minLs, cpmVal(cpmByTask, t.id, 'ls'));
       agg.minLf = minN(agg.minLf, cpmVal(cpmByTask, t.id, 'lf'));
       agg.minTf = minN(agg.minTf, cpmVal(cpmByTask, t.id, 'totalFloat'));
@@ -149,8 +177,8 @@ export function deriveTableRows(
       agg.sumProgress += ca.sumProgress;
       agg.hasCritical = agg.hasCritical || ca.hasCritical;
       agg.hasMilestone = agg.hasMilestone || ca.hasMilestone;
-      agg.minEs = minN(agg.minEs, ca.minEs);
-      agg.minEf = minN(agg.minEf, ca.minEf);
+      considerEs(ca.minEs, ca.esMinDate);
+      considerEf(ca.maxEf, ca.efMaxDate);
       agg.minLs = minN(agg.minLs, ca.minLs);
       agg.minLf = minN(agg.minLf, ca.minLf);
       agg.minTf = minN(agg.minTf, ca.minTf);
@@ -215,7 +243,7 @@ export function deriveTableRows(
       case 'es':
         return { v: agg.minEs ?? 0, missing: agg.minEs == null };
       case 'ef':
-        return { v: agg.minEf ?? 0, missing: agg.minEf == null };
+        return { v: agg.maxEf ?? 0, missing: agg.maxEf == null };
       case 'ls':
         return { v: agg.minLs ?? 0, missing: agg.minLs == null };
       case 'lf':
@@ -287,6 +315,8 @@ export function deriveTableRows(
           hasCritical: agg.hasCritical,
           hasMilestone: agg.hasMilestone,
           avgProgress: agg.count ? Math.round(agg.sumProgress / agg.count) : 0,
+          esMin: agg.esMinDate,
+          efMax: agg.efMaxDate,
         });
         wbsRows += 1;
         if (!collapsed) emit(e.node, depth + 1);

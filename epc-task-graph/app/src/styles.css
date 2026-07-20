@@ -538,6 +538,21 @@ input {
   font-weight: 400;
   color: var(--muted);
 }
+/* ビュー切替のキーヒント（G/T）: 控えめなキーキャップ風 */
+.viewtab .viewtab-key {
+  margin-left: 6px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  color: var(--muted);
+  border: 1px solid var(--border, #d0d5dd);
+  border-radius: 3px;
+}
+.viewtab.active .viewtab-key {
+  color: inherit;
+  opacity: 0.7;
+}
 .viewstack {
   flex: 1;
   min-height: 0;
@@ -727,6 +742,11 @@ input {
   font-weight: 700;
 }
 .wbs-count {
+  color: var(--muted);
+  font-size: 11px;
+}
+/* WBS行の日付サマリ（min ES 〜 max EF）: タスク行の実日付と区別するため淡色 */
+.wbs-agg {
   color: var(--muted);
   font-size: 11px;
 }
