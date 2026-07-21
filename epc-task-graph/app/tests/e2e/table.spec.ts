@@ -22,6 +22,12 @@ function activeView(page: Page) {
 function depsLen(page: Page) {
   return page.evaluate(() => (window as any).__APP.getState().dependencies.length);
 }
+function wbsCodeOf(page: Page, id: string) {
+  return page.evaluate(
+    (tid) => (window as any).__APP.getState().tasks.find((t: any) => t.id === tid)?.wbsCode,
+    id,
+  );
+}
 
 test('テーブル: タブ切替→4000→仮想化→フィルタ→選択同期→インライン編集→Undo', async ({ page }) => {
   await page.goto('/');
@@ -132,5 +138,34 @@ test('テーブル: g/t切替・Tab後続作成・WBS日付集計', async ({ pag
   await expect.poll(async () => await depsLen(page)).toBe(beforeD + 1);
   // 新タスクが選択され、名前セルの編集入力が開く。
   await expect(page.locator('.trow input.task-name-input')).toBeVisible();
+  await page.keyboard.press('Escape');
+});
+
+// 設計書 §12.6 PR-T2 ⑤: wbsCode セル編集 → 確定でツリー再配置（新WBS配下へ移動）。
+test('テーブル: wbsCodeセル編集で行が新WBSへ再配置される', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => !!(window as any).__APP);
+  await page.getByTestId('viewtab-table').click();
+  await expect(page.getByTestId('table-scroll')).toBeVisible();
+
+  // 既知のwbsCodeでタスクを1件用意して選択（addTask が選択も行う）。
+  const id = await page.evaluate(
+    () => (window as any).__APP.getState().addTask({ wbsCode: '7.1', name: 'WB移動' }).id,
+  );
+  await page.evaluate(() => (window as any).__APP.getState().setExpandLevel(9));
+  const wcCell = page.locator(`.trow[data-id="${id}"] .tcell-wbsCode`);
+  await expect(wcCell).toBeVisible();
+  expect(await wbsCodeOf(page, id)).toBe('7.1');
+
+  // wbsCode を 8.2 へ編集（ダブルクリック→入力→Enter）。
+  await wcCell.dblclick();
+  const input = page.locator('.trow input.task-name-input');
+  await expect(input).toBeVisible();
+  await input.fill('8.2');
+  await input.press('Enter');
+
+  // ストア上で wbsCode が更新され、DOM上で新WBSグループ行(wbs::8 / wbs::8.2)が現れる。
+  await expect.poll(async () => await wbsCodeOf(page, id)).toBe('8.2');
+  await expect(page.locator('[data-id="wbs::8.2"]')).toBeVisible();
   await page.keyboard.press('Escape');
 });

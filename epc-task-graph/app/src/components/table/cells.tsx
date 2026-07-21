@@ -33,6 +33,7 @@ export const COLUMN_META: Record<TableColumnKey, ColumnMeta> = {
 };
 
 export const EDITABLE_COLUMNS: TableColumnKey[] = [
+  'wbsCode',
   'name',
   'discipline',
   'assignee',

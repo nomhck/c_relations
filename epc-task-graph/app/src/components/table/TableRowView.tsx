@@ -100,18 +100,22 @@ function EditInput({
       </select>
     );
   }
-  // text / number 系（name / assignee / progress / durationDays）
+  // text / number 系（wbsCode / name / assignee / progress / durationDays）
   const numeric = col === 'progress' || col === 'durationDays';
   const initial =
-    col === 'name'
-      ? task.name
-      : col === 'assignee'
-        ? task.assignee
-        : col === 'progress'
-          ? String(task.progress)
-          : String(task.durationDays);
+    col === 'wbsCode'
+      ? task.wbsCode
+      : col === 'name'
+        ? task.name
+        : col === 'assignee'
+          ? task.assignee
+          : col === 'progress'
+            ? String(task.progress)
+            : String(task.durationDays);
   const commit = (raw: string, advance: boolean) => {
-    if (col === 'name') onCommit({ name: raw }, advance);
+    // wbsCode 編集: 確定でツリーが再構築され行が新WBSへ移動する（deriveTableRows が毎回再導出）。
+    if (col === 'wbsCode') onCommit({ wbsCode: raw.trim() }, advance);
+    else if (col === 'name') onCommit({ name: raw }, advance);
     else if (col === 'assignee') onCommit({ assignee: raw }, advance);
     else if (col === 'progress') {
       const n = Math.max(0, Math.min(100, Math.round(Number(raw) || 0)));
