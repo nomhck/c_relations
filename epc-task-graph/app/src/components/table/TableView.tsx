@@ -11,6 +11,7 @@ import type { TableColumnKey, TableRow, Task } from '../../domain';
 import { COLUMN_META, ROW_HEIGHT } from './cells';
 import { TableRowView, type RowHandlers } from './TableRowView';
 import { ColumnMenu } from './ColumnMenu';
+import { BulkBar } from './BulkBar';
 
 export function TableView({ active }: { active: boolean }) {
   const tasks = useApp((s) => s.tasks);
@@ -21,6 +22,7 @@ export function TableView({ active }: { active: boolean }) {
   const tableSort = useApp((s) => s.tableSort);
   const tableColumns = useApp((s) => s.tableColumns);
   const selection = useApp((s) => s.selection);
+  const selectedIds = useApp((s) => s.selectedIds);
 
   const cpm = useMemo(() => selectCpm(tasks, dependencies, dataDate), [tasks, dependencies, dataDate]);
   const augSpec = useMemo(
@@ -71,6 +73,16 @@ export function TableView({ active }: { active: boolean }) {
   }, [rows]);
 
   const selId = selection.taskId || selection.aggId || null;
+  // 実効選択（多選択が張られていればそれ、無ければアンカー1件）。一括操作/削除の対象。
+  const effectiveSelected = useMemo(
+    () => (selectedIds.length ? selectedIds : selection.taskId ? [selection.taskId] : []),
+    [selectedIds, selection.taskId],
+  );
+  // 行ハイライト集合: 多選択はタスクidの集合、単一時はアンカー（agg行も含む selId）。
+  const selectedSet = useMemo(
+    () => new Set(selectedIds.length ? selectedIds : selId ? [selId] : []),
+    [selectedIds, selId],
+  );
 
   // 復帰時に measure()（コンテナ 0px の間に破綻しないための1回・§12.2）＋選択へスクロール。
   useEffect(() => {
@@ -120,9 +132,31 @@ export function TableView({ active }: { active: boolean }) {
 
   const handlers: RowHandlers = useMemo(
     () => ({
-      onSelect: (row) => {
-        if (row.kind === 'wbs') useApp.getState().setSelection({ aggId: row.id });
-        else useApp.getState().setSelection({ taskId: row.id });
+      onSelect: (row, e) => {
+        const s = useApp.getState();
+        if (row.kind === 'wbs') {
+          s.setSelection({ aggId: row.id });
+          return;
+        }
+        // Cmd/Ctrl+クリック=トグル ／ Shift+クリック=アンカー〜クリックの範囲（タスク行のみ）。
+        if (e.metaKey || e.ctrlKey) {
+          s.toggleSelectedId(row.id);
+        } else if (e.shiftKey) {
+          const list = rowsRef.current;
+          const anchorId = s.selection.taskId;
+          const ai = anchorId ? list.findIndex((r) => r.id === anchorId) : -1;
+          const ci = list.findIndex((r) => r.id === row.id);
+          if (ai < 0 || ci < 0) {
+            s.setSelection({ taskId: row.id });
+          } else {
+            const [lo, hi] = ai < ci ? [ai, ci] : [ci, ai];
+            const ids: string[] = [];
+            for (let i = lo; i <= hi; i++) if (list[i].kind === 'task') ids.push(list[i].id);
+            s.setSelectedIds(ids, row.id);
+          }
+        } else {
+          s.setSelection({ taskId: row.id });
+        }
       },
       onToggleCollapse: (prefix) => useApp.getState().toggleCollapse(prefix),
       onStartEdit: (id, col) => setEdit({ id, col }),
@@ -153,13 +187,28 @@ export function TableView({ active }: { active: boolean }) {
         case 'ArrowDown': {
           e.preventDefault();
           const ni = curIdx < 0 ? 0 : Math.min(list.length - 1, curIdx + 1);
-          if (list[ni]) selectRow(list[ni]);
+          const nr = list[ni];
+          if (!nr) break;
+          if (e.shiftKey && nr.kind === 'task') {
+            // Shift+↓: 下の行を選択に加えつつアンカーを移動（範囲の下方向拡張）。
+            const base = s.selectedIds.length ? s.selectedIds : s.selection.taskId ? [s.selection.taskId] : [];
+            s.setSelectedIds([...base, nr.id], nr.id);
+          } else {
+            selectRow(nr);
+          }
           break;
         }
         case 'ArrowUp': {
           e.preventDefault();
           const ni = curIdx <= 0 ? 0 : curIdx - 1;
-          if (list[ni]) selectRow(list[ni]);
+          const nr = list[ni];
+          if (!nr) break;
+          if (e.shiftKey && nr.kind === 'task') {
+            const base = s.selectedIds.length ? s.selectedIds : s.selection.taskId ? [s.selection.taskId] : [];
+            s.setSelectedIds([...base, nr.id], nr.id);
+          } else {
+            selectRow(nr);
+          }
           break;
         }
         case 'ArrowRight': {
@@ -216,9 +265,10 @@ export function TableView({ active }: { active: boolean }) {
         }
         case 'Delete':
         case 'Backspace': {
-          if (s.selection.taskId) {
+          const sel = s.selectedIds.length ? s.selectedIds : s.selection.taskId ? [s.selection.taskId] : [];
+          if (sel.length) {
             e.preventDefault();
-            s.deleteTasks([s.selection.taskId]);
+            s.deleteTasks(sel);
           }
           break;
         }
@@ -246,6 +296,9 @@ export function TableView({ active }: { active: boolean }) {
         <span className="stat" data-testid="table-count">
           行 <b>{stats.rows}</b>（タスク {stats.taskRows} / WBS {stats.wbsRows} / 全 {stats.total}）
         </span>
+        {effectiveSelected.length > 1 ? (
+          <BulkBar ids={effectiveSelected} assigneeOptions={assigneeOptions} />
+        ) : null}
         <span className="spacer" />
         <button
           className="btn"
@@ -291,7 +344,7 @@ export function TableView({ active }: { active: boolean }) {
             {virtualItems.map((vi) => {
               const row = rows[vi.index];
               if (!row) return null;
-              const isSel = row.id === selId;
+              const isSel = selectedSet.has(row.id);
               const cpmR = row.kind === 'task' ? cpm.byTask.get(row.id) || null : null;
               const editCol = edit && edit.id === row.id ? edit.col : null;
               return (

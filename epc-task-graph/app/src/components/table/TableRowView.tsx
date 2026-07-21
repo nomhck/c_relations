@@ -24,7 +24,7 @@ import {
 } from './cells';
 
 export interface RowHandlers {
-  onSelect: (row: TableRow) => void;
+  onSelect: (row: TableRow, e: React.MouseEvent) => void;
   onToggleCollapse: (prefix: string) => void;
   onStartEdit: (id: string, col: TableColumnKey) => void;
   onCommit: (id: string, patch: Partial<Task>, advance: boolean) => void;
@@ -405,7 +405,7 @@ function TableRowViewImpl({
       }
       style={{ transform: `translateY(${top}px)`, height: ROW_HEIGHT }}
       data-id={row.id}
-      onClick={() => handlers.onSelect(row)}
+      onClick={(e) => handlers.onSelect(row, e)}
     >
       {columns.map((c) => cell(c))}
     </div>

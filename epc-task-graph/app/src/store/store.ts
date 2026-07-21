@@ -128,6 +128,9 @@ export interface AppState {
   viewSpec: ViewSpec;
   expandLevel: number;
   selection: Selection;
+  // 複数行選択（§12.3.5 PR-T2・テーブル限定）。空=単一選択モード（selection.taskId にフォールバック）。
+  // selection.taskId は常に「アンカー（範囲選択の基点・右パネル/グラフが読む主選択）」を指す。
+  selectedIds: string[];
   editingId: string | null;
   toast: ToastItem[];
   saveStatus: 'saved' | 'dirty';
@@ -158,6 +161,10 @@ export interface AppState {
 
   setEditing: (id: string | null) => void;
   setSelection: (sel: Partial<Selection>) => void;
+  // ---- 複数行選択・一括操作（§12.3.5 PR-T2）----
+  setSelectedIds: (ids: string[], anchor?: string) => void; // 範囲選択の確定（ids＋アンカー）
+  toggleSelectedId: (id: string) => void; // Cmd/Ctrl+クリックのトグル
+  bulkUpdateTasks: (ids: string[], patch: Partial<Task>) => void; // 一括更新（1確定=1 Undo）
   setFilter: (patch: Partial<GraphFilter>) => void;
   clearFilter: () => void;
   setDisplayMode: (m: DisplayMode) => void;
@@ -365,6 +372,7 @@ export const useApp = create<AppState>()(
       },
       expandLevel: doc0.viewState.expandLevel || 2,
       selection: { taskId: null, edgeId: null, aggId: null },
+      selectedIds: [],
       editingId: null,
       toast: [],
       saveStatus: 'saved',
@@ -420,6 +428,7 @@ export const useApp = create<AppState>()(
           s.tasks.push(t);
           s.dirty.tasks.add(t.id);
           s.selection = { taskId: t.id, edgeId: null, aggId: null };
+          s.selectedIds = [];
           s.editingId = edit ? t.id : null;
         });
         scheduleSave();
@@ -465,8 +474,9 @@ export const useApp = create<AppState>()(
             (d) => !idset.has(d.predecessorId) && !idset.has(d.successorId),
           );
           for (const id of ids) s.dirty.deletedTasks.add(id);
+          s.selectedIds = s.selectedIds.filter((id) => !idset.has(id));
           if (s.selection.taskId && idset.has(s.selection.taskId))
-            s.selection = { taskId: null, edgeId: null, aggId: null };
+            s.selection = { taskId: s.selectedIds[s.selectedIds.length - 1] || null, edgeId: null, aggId: null };
         });
         scheduleSave();
         if (ids.length > 1) get().showToast(ids.length + '件削除しました（Cmd+Z で元に戻せます）');
@@ -505,6 +515,7 @@ export const useApp = create<AppState>()(
           s.dirty.tasks.add(t.id);
           s.dirty.deps.add(dep.id);
           s.selection = { taskId: t.id, edgeId: null, aggId: null };
+          s.selectedIds = [];
           s.editingId = t.id;
         });
         scheduleSave();
@@ -518,7 +529,51 @@ export const useApp = create<AppState>()(
       setSelection: (sel) =>
         set((s) => {
           s.selection = { taskId: null, edgeId: null, aggId: null, ...sel };
+          s.selectedIds = []; // 単一選択に戻す（多選択はテーブルの明示操作でのみ張る）
         }),
+      // 範囲選択の確定（Shift+クリック等）: ids をそのまま多選択とし、アンカーを selection.taskId に。
+      setSelectedIds: (ids, anchor) =>
+        set((s) => {
+          const uniq = [...new Set(ids)];
+          s.selectedIds = uniq.length > 1 ? uniq : [];
+          s.selection = {
+            taskId: anchor ?? uniq[uniq.length - 1] ?? null,
+            edgeId: null,
+            aggId: null,
+          };
+        }),
+      // Cmd/Ctrl+クリックのトグル: id を多選択に足す/外す。アンカーは操作した id（外した時は残りの末尾）。
+      toggleSelectedId: (id) =>
+        set((s) => {
+          const base = s.selectedIds.length ? [...s.selectedIds] : s.selection.taskId ? [s.selection.taskId] : [];
+          const idx = base.indexOf(id);
+          let anchor: string | null;
+          if (idx >= 0) {
+            base.splice(idx, 1);
+            anchor = base[base.length - 1] ?? null;
+          } else {
+            base.push(id);
+            anchor = id;
+          }
+          s.selectedIds = base.length > 1 ? base : [];
+          s.selection = { taskId: anchor, edgeId: null, aggId: null };
+        }),
+      // 一括更新（削除/ステータス/担当/工種）: 1回の set() ＝ 1 Undo単位（zundo は状態差分で1エントリ）。
+      bulkUpdateTasks: (ids, patch) => {
+        const idset = new Set(ids);
+        set((s) => {
+          const now = nowISO();
+          for (const t of s.tasks) {
+            if (!idset.has(t.id)) continue;
+            Object.assign(t, patch);
+            t.rev += 1;
+            t.updatedAt = now;
+            t.updatedBy = s.me;
+            s.dirty.tasks.add(t.id);
+          }
+        });
+        scheduleSave();
+      },
       setFilter: (patch) =>
         set((s) => {
           Object.assign(s.viewSpec.filter, patch);
@@ -566,6 +621,7 @@ export const useApp = create<AppState>()(
           s.viewSpec.collapsedWbs = collapsedWbs;
           s.viewState.collapsedWbs = collapsedWbs;
           s.selection = { taskId: null, edgeId: null, aggId: null };
+          s.selectedIds = [];
         });
         scheduleSave();
       },
@@ -608,6 +664,9 @@ export const useApp = create<AppState>()(
         set((s) => {
           if (s.viewSpec.focus) {
             s.viewSpec.focus = null;
+          } else if (s.selectedIds.length) {
+            // 多選択中の Esc は単一（アンカー）へ戻す（選択自体は残す）。
+            s.selectedIds = [];
           } else if (s.selection.taskId || s.selection.edgeId || s.selection.aggId) {
             s.selection = { taskId: null, edgeId: null, aggId: null };
           }
@@ -700,6 +759,7 @@ export const useApp = create<AppState>()(
           s.viewSpec.collapsedWbs = collapsedWbs;
           s.viewState.collapsedWbs = collapsedWbs;
           s.selection = { taskId, edgeId: null, aggId: null };
+          s.selectedIds = [];
         }),
 
       // ---- Undo / Redo（zundo temporal 経由。戻した行もダーティ扱い、§2.3）----
@@ -743,6 +803,7 @@ export const useApp = create<AppState>()(
           s.tasks = doc.tasks;
           s.dependencies = doc.dependencies;
           s.selection = { taskId: null, edgeId: null, aggId: null };
+          s.selectedIds = [];
           s.editingId = null;
           s.viewSpec = {
             filter: {},

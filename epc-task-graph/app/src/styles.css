@@ -590,6 +590,54 @@ input {
 .table-toolbar .spacer {
   flex: 1;
 }
+/* 一括操作バー（2件以上選択時） */
+.bulkbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+}
+.bulkbar .bulk-count {
+  font-size: 12px;
+  color: #3730a3;
+  white-space: nowrap;
+}
+.bulkbar .bulk-select,
+.bulkbar .bulk-assignee {
+  height: 24px;
+  font-size: 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: #fff;
+}
+.bulkbar .bulk-assignee {
+  width: 140px;
+  padding: 0 6px;
+}
+.btn.danger {
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+.btn.danger:hover {
+  background: #fef2f2;
+}
+@media (prefers-color-scheme: dark) {
+  .bulkbar {
+    background: #1e1b4b;
+    border-color: #3730a3;
+  }
+  .bulkbar .bulk-count {
+    color: #c7d2fe;
+  }
+  .bulkbar .bulk-select,
+  .bulkbar .bulk-assignee {
+    background: #0f172a;
+    color: inherit;
+  }
+}
 .table-scroll {
   flex: 1;
   min-height: 0;

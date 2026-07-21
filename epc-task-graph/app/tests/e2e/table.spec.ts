@@ -28,6 +28,15 @@ function wbsCodeOf(page: Page, id: string) {
     id,
   );
 }
+function statusOf(page: Page, id: string) {
+  return page.evaluate(
+    (tid) => (window as any).__APP.getState().tasks.find((t: any) => t.id === tid)?.status,
+    id,
+  );
+}
+function selectedCount(page: Page) {
+  return page.evaluate(() => (window as any).__APP.getState().selectedIds.length);
+}
 
 test('テーブル: タブ切替→4000→仮想化→フィルタ→選択同期→インライン編集→Undo', async ({ page }) => {
   await page.goto('/');
@@ -168,4 +177,54 @@ test('テーブル: wbsCodeセル編集で行が新WBSへ再配置される', as
   await expect.poll(async () => await wbsCodeOf(page, id)).toBe('8.2');
   await expect(page.locator('[data-id="wbs::8.2"]')).toBeVisible();
   await page.keyboard.press('Escape');
+});
+
+// 設計書 §12.6 PR-T2 ②: 複数行選択（Cmd/Ctrl・Shift）と一括操作（削除/ステータス）。
+test('テーブル: 複数選択と一括操作（一括ステータス・一括削除→Undo）', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => !!(window as any).__APP);
+  await page.getByTestId('viewtab-table').click();
+  await expect(page.getByTestId('table-scroll')).toBeVisible();
+
+  // wbsCode '99' で3タスクを隔離作成（表内で連続・他行と混ざらない）。
+  const ids: string[] = await page.evaluate(() => {
+    const app = (window as any).__APP.getState();
+    const a = app.addTask({ wbsCode: '99', name: 'MA' });
+    const b = app.addTask({ wbsCode: '99', name: 'MB' });
+    const c = app.addTask({ wbsCode: '99', name: 'MC' });
+    app.setSelection({ taskId: null }); // 選択リセット
+    return [a.id, b.id, c.id];
+  });
+  await page.evaluate(() => (window as any).__APP.getState().setExpandLevel(9));
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+  const rowA = page.locator(`.trow[data-id="${ids[0]}"]`);
+  const rowB = page.locator(`.trow[data-id="${ids[1]}"]`);
+  const rowC = page.locator(`.trow[data-id="${ids[2]}"]`);
+
+  // 単一選択では一括バーは出ない。
+  await rowA.click();
+  await expect(page.getByTestId('bulkbar')).toHaveCount(0);
+
+  // ---- Cmd/Ctrl+クリックのトグルで MA,MB を選択（2件）----
+  await rowB.click({ modifiers: [mod] });
+  await expect.poll(async () => await selectedCount(page)).toBe(2);
+  await expect(page.getByTestId('bulkbar')).toBeVisible();
+
+  // ---- 一括ステータス変更（DONE）: MA,MB が DONE、MC は非DONE ----
+  await page.getByTestId('bulk-status').selectOption('DONE');
+  await expect.poll(async () => await statusOf(page, ids[0])).toBe('DONE');
+  await expect.poll(async () => await statusOf(page, ids[1])).toBe('DONE');
+  expect(await statusOf(page, ids[2])).not.toBe('DONE');
+
+  // ---- Shift+クリックで範囲選択（MA..MC = 3件）----
+  await rowA.click();
+  await rowC.click({ modifiers: ['Shift'] });
+  await expect.poll(async () => await selectedCount(page)).toBe(3);
+
+  // ---- 一括削除 → 3件減 → Undo で復元 ----
+  const before = await tasksLen(page);
+  await page.getByTestId('bulk-delete').click();
+  await expect.poll(async () => await tasksLen(page)).toBe(before - 3);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  await expect.poll(async () => await tasksLen(page)).toBe(before);
 });
