@@ -22,6 +22,8 @@ interface Candidate {
   isOrigin?: boolean;
   directPred?: boolean;
   directSucc?: boolean;
+  related?: boolean;
+  gen?: number;
 }
 
 export function deriveVisibleGraph(
@@ -51,11 +53,26 @@ export function deriveVisibleGraph(
   if (focus && focus.taskId && taskById.has(focus.taskId)) {
     nb = neighborhood(focus.taskId, succ, pred, focus.up != null ? focus.up : 2, focus.down != null ? focus.down : 2);
   }
+  // 'highlight'=近傍を強調しつつ全体を残す（非近傍は淡色）。'isolate'（既定）=近傍だけ抽出。
+  const nbHighlight = !!(nb && focus!.mode === 'highlight');
   const isoRemove = active && displayMode === 'ISOLATE' && !nb;
 
   const cands: Candidate[] = [];
   for (const t of tasks) {
-    if (nb) {
+    if (nb && nbHighlight) {
+      // 関係ハイライト: 全タスクを残し、近傍を related+世代タグ・非近傍を淡色（dim）。
+      const inNb = nb.set.has(t.id);
+      cands.push({
+        task: t,
+        dim: !inNb,
+        outside: false,
+        isOrigin: t.id === focus!.taskId,
+        directPred: nb.directPred.has(t.id),
+        directSucc: nb.directSucc.has(t.id),
+        related: inNb,
+        gen: inNb ? nb.gen.get(t.id) : undefined,
+      });
+    } else if (nb) {
       if (!nb.set.has(t.id)) continue;
       cands.push({
         task: t,
@@ -64,6 +81,8 @@ export function deriveVisibleGraph(
         isOrigin: t.id === focus!.taskId,
         directPred: nb.directPred.has(t.id),
         directSucc: nb.directSucc.has(t.id),
+        related: true,
+        gen: nb.gen.get(t.id),
       });
     } else if (isoRemove) {
       if (!matchSet.has(t.id)) continue;
@@ -76,9 +95,11 @@ export function deriveVisibleGraph(
 
   let effCollapsed: string[] = collapsedWbs;
   if (isoRemove) effCollapsed = [];
-  // フォーカス中は近傍タスクを含む WBS 枝を自動展開（近傍を実タスクとして見せる、§2.9）。
+  // フォーカス中は近傍タスクを含む WBS 枝だけ自動展開（近傍を実タスクとして見せる、§2.9）。
+  // highlight では cands に全タスクが入るため、展開判定は必ず nb.set（実際の近傍）で行う——
+  // さもないと非近傍の枝まで展開され集約が消えて全ノード描画になる。
   if (nb) {
-    const nbTasks = cands.map((c) => c.task);
+    const nbTasks = tasks.filter((t) => nb!.set.has(t.id));
     effCollapsed = collapsedWbs.filter((p) => !nbTasks.some((t) => isWbsPrefix(p, t.wbsCode)));
   }
   const collapsedSorted = [...new Set(effCollapsed)].filter(Boolean).sort((a, b) => a.length - b.length);
@@ -106,6 +127,8 @@ export function deriveVisibleGraph(
         directPred: !!c.directPred,
         directSucc: !!c.directSucc,
         critical: cpHighlight && criticalTasks!.has(c.task.id),
+        related: c.related,
+        gen: c.gen,
       });
     }
   }

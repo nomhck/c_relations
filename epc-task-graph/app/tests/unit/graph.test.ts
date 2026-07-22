@@ -104,4 +104,15 @@ describe('graph: neighborhood（近傍抽出・§2.9）', () => {
     const nb = neighborhood(tasks[2].id, succ, pred, 2, 2);
     expect(nb.set.size).toBe(5); // 全部
   });
+
+  it('世代マップ: 起点=0・上流=負・下流=正（§2.9 世代フィルタ）', () => {
+    const { tasks, deps } = chain(['A', 'B', 'C', 'D', 'E']); // 起点 C(=index2)
+    const { succ, pred } = buildAdjacency(deps);
+    const nb = neighborhood(tasks[2].id, succ, pred, 2, 2);
+    expect(nb.gen.get(tasks[2].id)).toBe(0); // 起点
+    expect(nb.gen.get(tasks[1].id)).toBe(-1); // B 上流1世代
+    expect(nb.gen.get(tasks[0].id)).toBe(-2); // A 上流2世代
+    expect(nb.gen.get(tasks[3].id)).toBe(1); // D 下流1世代
+    expect(nb.gen.get(tasks[4].id)).toBe(2); // E 下流2世代
+  });
 });

@@ -112,3 +112,44 @@ describe('deriveVisibleGraph: 近傍フォーカス（§2.9）', () => {
     expect(cont.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('deriveVisibleGraph: 関係ハイライト（focus mode=highlight・§2.9 ユーザー要望）', () => {
+  // 近傍の鎖 A→B→C→D→E（WBS 1.1）と、無関係な別WBS 2.1 のノード群。
+  const near = ['A', 'B', 'C', 'D', 'E'].map((n) => makeTask({ name: n, wbsCode: '1.1' }));
+  const far = ['X', 'Y', 'Z'].map((n) => makeTask({ name: n, wbsCode: '2.1' }));
+  const tasks = [...near, ...far];
+  const deps: ReturnType<typeof makeDep>[] = [];
+  for (let i = 0; i + 1 < near.length; i++) deps.push(makeDep(near[i].id, near[i + 1].id));
+
+  it('highlight は非近傍を残し（隠さず）、近傍に related+世代タグを付ける', () => {
+    const res = deriveVisibleGraph(
+      tasks,
+      deps,
+      spec({
+        focus: { taskId: near[2].id, up: 1, down: 1, mode: 'highlight' },
+        collapsedWbs: collapsedForLevel(tasks, 2), // 別WBSは畳まれた状態
+      }),
+    );
+    // 非近傍（別WBS 2.1）は隠れず、集約ノードとして文脈に残る。
+    expect(res.visibleNodes.some((n) => n.kind === 'aggregate')).toBe(true);
+    const taskNodes = res.visibleNodes.filter((n) => n.kind === 'task');
+    const origin = taskNodes.find((n) => n.kind === 'task' && n.isOrigin);
+    expect(origin && (origin as any).related).toBe(true);
+    expect(origin && (origin as any).gen).toBe(0);
+    // 近傍タスク（B,C,D）は related=true、それ以外の実タスクは dim。
+    const b = taskNodes.find((n) => n.id === near[1].id) as any;
+    expect(b.related).toBe(true);
+    expect(b.gen).toBe(-1);
+  });
+
+  it('isolate（既定）は非近傍を除去する', () => {
+    const res = deriveVisibleGraph(
+      tasks,
+      deps,
+      spec({ focus: { taskId: near[2].id, up: 1, down: 1, mode: 'isolate' } }),
+    );
+    // 別WBSのタスクは描画対象に出ない（集約含め near の近傍のみ）。
+    const ids = new Set(res.visibleNodes.map((n) => n.id));
+    expect(ids.has(far[0].id)).toBe(false);
+  });
+});

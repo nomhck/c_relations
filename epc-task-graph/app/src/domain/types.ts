@@ -105,6 +105,8 @@ export interface FocusSpec {
   taskId: string;
   up: number;
   down: number;
+  // 'isolate'=近傍だけ抽出（従来）／'highlight'=全体は残し近傍を強調・非近傍を淡色（§2.9 関係ハイライト）
+  mode?: 'isolate' | 'highlight';
 }
 
 export interface ViewSpec {
@@ -137,6 +139,8 @@ export interface VisibleTaskNode {
   directPred: boolean;
   directSucc: boolean;
   critical: boolean; // CP強調 ON かつクリティカルなタスク（§2.11/§9.2）
+  related?: boolean; // 関係ハイライト: フォーカス近傍に含まれる（§2.9）
+  gen?: number; // 起点からの世代（0=起点・負=上流・正=下流）。関係ハイライトの色/バッジに使用
 }
 
 export interface VisibleAggregateNode {
@@ -191,6 +195,7 @@ export interface Neighborhood {
   set: Set<string>;
   directPred: Set<string>;
   directSucc: Set<string>;
+  gen: Map<string, number>; // 起点からの世代（0=起点・負=上流N世代・正=下流N世代）
 }
 
 // ---- 多ビュー（§12）: テーブル/ガントの器で共有する表示状態と行導出の型 ----

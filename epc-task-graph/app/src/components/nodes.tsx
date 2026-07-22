@@ -20,8 +20,8 @@ export const TaskNode = memo(function TaskNode({ id, data }: NodeProps) {
   if (lod && !editing) {
     return (
       <div
-        className={'lod-node' + (n.critical ? ' critical' : '')}
-        style={{ background: color, opacity: n.dim ? 0.2 : n.outside ? 0.5 : 1 }}
+        className={'lod-node' + (n.critical ? ' critical' : '') + (n.related ? ' related' : '')}
+        style={{ background: color, opacity: n.dim ? 0.18 : n.outside ? 0.5 : 1 }}
       >
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
@@ -35,11 +35,20 @@ export const TaskNode = memo(function TaskNode({ id, data }: NodeProps) {
     n.dim ? 'dim' : '',
     n.outside ? 'outside' : '',
     n.isOrigin ? 'origin' : '',
+    n.related ? 'related' : '',
     n.critical ? 'critical' : '',
     selected ? 'sel' : '',
   ]
     .filter(Boolean)
     .join(' ');
+
+  // 世代バッジ（起点/上流N/下流N）。関係ハイライト時に「自分の何世代先/前か」を一目化。
+  const genBadge =
+    n.related && n.gen != null ? (
+      <span className={'gen-badge' + (n.gen === 0 ? ' origin' : n.gen < 0 ? ' up' : ' down')}>
+        {n.gen === 0 ? '起点' : n.gen < 0 ? `▲${-n.gen}` : `▼${n.gen}`}
+      </span>
+    ) : null;
 
   const commit = (val: string) => {
     const v = (val || '').trim();
@@ -50,6 +59,7 @@ export const TaskNode = memo(function TaskNode({ id, data }: NodeProps) {
   return (
     <div className={cls}>
       <div className="disc-bar" style={{ background: color }} />
+      {genBadge}
       <Handle type="target" position={Position.Left} />
       {editing ? (
         <input

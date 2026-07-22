@@ -54,18 +54,45 @@ function FocusBar() {
   const focus = useApp((s) => s.viewSpec.focus);
   const name = useApp((s) => (s.viewSpec.focus ? nameOf(s.viewSpec.focus.taskId) : ''));
   if (!focus) return null;
+  const mode = focus.mode || 'isolate';
+  const setRange = (up: number, down: number) => useApp.getState().setFocusRange(up, down);
+  const stepper = (label: string, val: number, on: (v: number) => void) => (
+    <span className="focus-step">
+      {label}
+      <button className="btn" title="1世代減らす" onClick={() => on(Math.max(0, val - 1))}>
+        −
+      </button>
+      <b>{val}</b>
+      <button className="btn" title="1世代増やす" onClick={() => on(val + 1)}>
+        ＋
+      </button>
+      世代
+    </span>
+  );
   return (
     <div className="focusbar">
       <span>
-        <b>{name}</b> の上流{focus.up}・下流{focus.down}階層を表示中
+        <b>{name}</b> の関係タスク（{mode === 'highlight' ? 'ハイライト' : '抽出'}）
       </span>
-      <span>
-        深さ{' '}
-        <button className="btn" onClick={() => useApp.getState().incFocusDepth(-1)}>
-          −
-        </button>{' '}
-        <button className="btn" onClick={() => useApp.getState().incFocusDepth(1)}>
-          ＋
+      {stepper('上流', focus.up ?? 2, (v) => setRange(v, focus.down ?? 2))}
+      {stepper('下流', focus.down ?? 2, (v) => setRange(focus.up ?? 2, v))}
+      <span className="focus-modes">
+        <button
+          className={'btn' + (mode === 'highlight' ? ' on' : '')}
+          title="全体を残して関係タスクを強調"
+          onClick={() => useApp.getState().setFocusMode('highlight')}
+        >
+          ハイライト
+        </button>
+        <button
+          className={'btn' + (mode === 'isolate' ? ' on' : '')}
+          title="関係タスクだけを抽出表示"
+          onClick={() => {
+            useApp.getState().setFocusMode('isolate');
+            useApp.getState().fit();
+          }}
+        >
+          抽出
         </button>
       </span>
       <button className="btn" onClick={() => useApp.getState().clearFocus()}>

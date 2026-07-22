@@ -125,6 +125,7 @@ export function neighborhood(
   const set = new Set<string>([originId]);
   const directPred = new Set<string>();
   const directSucc = new Set<string>();
+  const gen = new Map<string, number>([[originId, 0]]);
   let frontier: string[] = [originId];
   for (let lvl = 0; lvl < up; lvl++) {
     const next: string[] = [];
@@ -135,6 +136,7 @@ export function neighborhood(
         if (lvl === 0) directPred.add(p);
         if (!set.has(p)) {
           set.add(p);
+          gen.set(p, -(lvl + 1)); // 上流は負の世代
           next.push(p);
         }
       }
@@ -151,11 +153,12 @@ export function neighborhood(
         if (lvl === 0) directSucc.add(s);
         if (!set.has(s)) {
           set.add(s);
+          gen.set(s, lvl + 1); // 下流は正の世代
           next.push(s);
         }
       }
     }
     frontier = next;
   }
-  return { set, directPred, directSucc };
+  return { set, directPred, directSucc, gen };
 }

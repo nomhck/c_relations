@@ -176,6 +176,8 @@ export interface AppState {
   toggleFocus: (taskId: string) => void;
   clearFocus: () => void;
   incFocusDepth: (delta: number) => void;
+  setFocusRange: (up: number, down: number) => void; // 上流/下流の世代数を個別に設定（§2.9）
+  setFocusMode: (mode: 'isolate' | 'highlight') => void; // 抽出↔関係ハイライト
   escape: () => void;
   quickMyTasks: () => void;
   quickCriticalOnly: () => void;
@@ -637,17 +639,17 @@ export const useApp = create<AppState>()(
         scheduleSave();
       },
       toggleFocus: (taskId) => {
-        let enabled = false;
         set((s) => {
           const cur = s.viewSpec.focus;
           if (cur && cur.taskId === taskId) {
             s.viewSpec.focus = null;
           } else {
-            s.viewSpec.focus = { taskId, up: 2, down: 2 };
-            enabled = true;
+            // 既定は「関係ハイライト」（全体を残し近傍を強調・§2.9 ユーザー要望2026-07-22）。
+            s.viewSpec.focus = { taskId, up: 2, down: 2, mode: 'highlight' };
           }
         });
-        if (enabled) get().fit();
+        // ハイライトは文脈を保ちたいので起点センタリングのみ（fitはしない）。
+        if (get().viewSpec.focus) setTimeout(() => get().runners.centerSelected?.(), 30);
       },
       clearFocus: () =>
         set((s) => {
@@ -657,8 +659,19 @@ export const useApp = create<AppState>()(
         set((s) => {
           if (!s.viewSpec.focus) return;
           const f = s.viewSpec.focus;
-          f.up = Math.max(1, (f.up || 2) + delta);
-          f.down = Math.max(1, (f.down || 2) + delta);
+          f.up = Math.max(0, (f.up ?? 2) + delta);
+          f.down = Math.max(0, (f.down ?? 2) + delta);
+        }),
+      setFocusRange: (up, down) =>
+        set((s) => {
+          if (!s.viewSpec.focus) return;
+          s.viewSpec.focus.up = Math.max(0, Math.min(9, Math.round(up)));
+          s.viewSpec.focus.down = Math.max(0, Math.min(9, Math.round(down)));
+        }),
+      setFocusMode: (mode) =>
+        set((s) => {
+          if (!s.viewSpec.focus) return;
+          s.viewSpec.focus.mode = mode;
         }),
       escape: () =>
         set((s) => {
