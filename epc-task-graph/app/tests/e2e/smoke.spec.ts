@@ -66,6 +66,13 @@ test('4,000デモ生成→ISOLATEフィルタで可視数が大幅に減る（§
   await page.getByRole('button', { name: '4,000ノード生成' }).click();
   await expect.poll(async () => (await counts(page)).tasks).toBe(4000);
 
+  // デザイン刷新の回帰ガード: 俯瞰（Lv2集約30件）が灰色LOD箱でなく判読可能な
+  // 集約カードとして描画される（グリッド整列で読める倍率に収まる）。
+  await expect.poll(async () => await page.locator('.agg-card').count()).toBeGreaterThan(10);
+  const firstCard = page.locator('.agg-card .agg-prefix').first();
+  await expect(firstCard).toBeVisible();
+  await expect(firstCard).toHaveText(/\d/); // WBSプレフィックス（数字を含む）
+
   // ISOLATE + 担当1部署でフィルタ
   const visible = await page.evaluate(() => {
     const app = (window as any).__APP;

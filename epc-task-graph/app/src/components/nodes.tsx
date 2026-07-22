@@ -98,11 +98,23 @@ export const MilestoneNode = memo(function MilestoneNode({ id, data }: NodeProps
   );
 });
 
+// 支配的な工種（構成比最大）。集約カードのヘッダ色に使い、俯瞰時の一目の分類を担う。
+function dominantDiscipline(d: VisibleAggregateNode['disc']): 'E' | 'P' | 'C' | 'OTHER' {
+  const entries: ['E' | 'P' | 'C' | 'OTHER', number][] = [
+    ['E', d.E],
+    ['P', d.P],
+    ['C', d.C],
+    ['OTHER', d.OTHER],
+  ];
+  return entries.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
+}
+
 export const AggregateNode = memo(function AggregateNode({ id, data }: NodeProps) {
   const n = (data as { n: VisibleAggregateNode }).n;
-  const zoom = useRFStore((s) => s.transform[2]);
   const total = n.count || 1;
   const expand = () => useApp.getState().expandAggregate(id);
+  const dom = dominantDiscipline(n.disc);
+  const domColor = DISC_COLOR[dom];
   const seg = (c: number, key: string) =>
     c > 0 ? (
       <span key={key} style={{ width: (c / total) * 100 + '%', background: DISC_COLOR[key as 'E'] }} />
@@ -110,45 +122,49 @@ export const AggregateNode = memo(function AggregateNode({ id, data }: NodeProps
 
   if (n.continuation) {
     return (
-      <div
-        className="agg-node"
-        style={{ borderStyle: 'dotted', background: '#eef2ff' }}
-        title="フォーカス深さの先で折り畳み内へ続く経路（§2.9）"
-      >
+      <div className="agg-card continuation" title="フォーカス深さの先で折り畳み内へ続く経路（§2.9）">
         <Handle type="target" position={Position.Left} />
-        <div className="agg-title">⋯ {n.prefix}</div>
-        <div className="agg-sub">{n.count} 件が内部に続く</div>
+        <div className="agg-head" style={{ background: '#64748b' }}>
+          <span className="agg-prefix">⋯ {n.prefix}</span>
+          <span className="agg-count">{n.count}</span>
+        </div>
+        <div className="agg-body">
+          <div className="agg-foot">内部に続く経路</div>
+        </div>
         <Handle type="source" position={Position.Right} />
       </div>
     );
   }
-  if (zoom < 0.4) {
-    return (
-      <div className="lod-node" style={{ background: '#94a3b8', width: 60 }} onDoubleClick={expand}>
-        <Handle type="target" position={Position.Left} />
-        <Handle type="source" position={Position.Right} />
-      </div>
-    );
-  }
+
+  // ズーム非依存の常時カード（LOD灰色箱を廃止）。ヘッダの色ブロック＋大きな件数で
+  // 俯瞰でも「どのWBS群がどの工種主体か・規模はどれか」が読める（§0.3-2 即時把握）。
   return (
     <div
-      className={'agg-node' + (n.dim ? ' dim' : '')}
+      className={'agg-card' + (n.dim ? ' dim' : '') + (n.hasCritical ? ' has-cp' : '')}
       onDoubleClick={expand}
-      title="ダブルクリックで展開（E）"
+      title={`WBS ${n.prefix}：${n.count}タスク・主体${dom}・進捗${n.avgProgress}%（ダブルクリック/E で展開）`}
     >
       <Handle type="target" position={Position.Left} />
-      <div className="agg-title">▣ {n.prefix}</div>
-      <div className="agg-sub">
-        {n.count} タスク · 進捗平均 {n.avgProgress}%
+      <div className="agg-head" style={{ background: domColor }}>
+        <span className="agg-prefix">{n.prefix}</span>
+        <span className="agg-count">{n.count}</span>
+        {n.hasMilestone ? <span className="agg-ms" title="マイルストーンを含む">◆</span> : null}
+        {n.hasCritical ? <span className="agg-cp" title="内部にクリティカルタスクあり">CP</span> : null}
       </div>
-      <div className="agg-bars">
-        {seg(n.disc.E, 'E')}
-        {seg(n.disc.P, 'P')}
-        {seg(n.disc.C, 'C')}
-        {seg(n.disc.OTHER, 'OTHER')}
+      <div className="agg-body">
+        <div className="agg-bars">
+          {seg(n.disc.E, 'E')}
+          {seg(n.disc.P, 'P')}
+          {seg(n.disc.C, 'C')}
+          {seg(n.disc.OTHER, 'OTHER')}
+        </div>
+        <div className="agg-foot">
+          <span className="agg-prog">
+            <i style={{ width: n.avgProgress + '%' }} />
+          </span>
+          <span className="agg-prog-num">{n.avgProgress}%</span>
+        </div>
       </div>
-      {n.hasMilestone ? <span className="agg-badges">🚩</span> : null}
-      {n.hasCritical ? <span className="agg-badges cp" title="内部にクリティカルタスクあり">◆CP</span> : null}
       <Handle type="source" position={Position.Right} />
     </div>
   );

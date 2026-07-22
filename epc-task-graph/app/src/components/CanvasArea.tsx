@@ -22,6 +22,7 @@ import {
 import {
   deriveVisibleGraph,
   canConnect,
+  naturalWbsCompare,
   DISC_COLOR,
   type Discipline,
   type VisibleNode,
@@ -31,6 +32,23 @@ import { dagreLayout } from '../layout/layout';
 import { useApp, explainReject, nameOf } from '../store/store';
 import { selectCpm } from '../store/selectors';
 import { nodeTypes } from './nodes';
+
+// 俯瞰グリッド整列（§2.10/デザイン刷新）: 表示がすべて集約ノード（＝WBS群の俯瞰）のとき、
+// LR依存チェーンだと横長になり fitView が極端に縮小→ノードが判読不能になる。WBS自然順で
+// タイル状に敷き詰め、読める倍率で全群が一望できるようにする。集約は非永続の表示専用ノード
+// なので座標を差し替えても実データ（タスク位置）に影響しない。タスクを含む表示は従来どおり。
+const OVR_CW = 208;
+const OVR_CH = 132;
+function gridPackOverview(vnodes: VisibleNode[]): VisibleNode[] {
+  if (vnodes.length < 2 || vnodes.length > 400) return vnodes;
+  if (!vnodes.every((n) => n.kind === 'aggregate')) return vnodes;
+  const sorted = [...vnodes].sort((a, b) => naturalWbsCompare((a as any).prefix, (b as any).prefix));
+  const cols = Math.max(1, Math.round(Math.sqrt(sorted.length * 1.7))); // 横長バイアスで一望しやすく
+  return sorted.map((n, i) => ({
+    ...n,
+    position: { x: (i % cols) * OVR_CW, y: Math.floor(i / cols) * OVR_CH },
+  }));
+}
 
 function FocusBar() {
   const focus = useApp((s) => s.viewSpec.focus);
@@ -82,12 +100,15 @@ export function CanvasArea() {
   const lastDerived = useRef(derived);
   lastDerived.current = derived;
 
-  const [nodes, setNodes] = useState<Node<RFNodeData>[]>(() => toRFNodes(derived.visibleNodes));
+  // 俯瞰（全集約）ならグリッド整列した表示用ノードを使う（座標差し替えは集約のみ・非永続）。
+  const displayNodes = useMemo(() => gridPackOverview(derived.visibleNodes), [derived]);
+
+  const [nodes, setNodes] = useState<Node<RFNodeData>[]>(() => toRFNodes(displayNodes));
   const [edges, setEdges] = useState<Edge[]>(() => toRFEdges(derived.visibleEdges));
   useEffect(() => {
-    setNodes(toRFNodes(derived.visibleNodes));
+    setNodes(toRFNodes(displayNodes));
     setEdges(toRFEdges(derived.visibleEdges));
-  }, [derived]);
+  }, [derived, displayNodes]);
 
   // 1,500ノード超の表示は警告（§2.6 第一の防御）
   const warned = useRef(false);

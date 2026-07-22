@@ -351,42 +351,93 @@ input {
   color: var(--muted);
 }
 
-.agg-node {
+/* 集約カード（俯瞰の主役・§2.11）: ヘッダの色ブロックで工種主体、大きな件数で規模を一目化。 */
+.agg-card {
   position: relative;
-  width: 190px;
-  background: #f8fafc;
-  border: 2px dashed #94a3b8;
-  border-radius: 10px;
-  padding: 8px 10px;
+  width: 172px;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 11px;
+  overflow: hidden;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.14);
   cursor: pointer;
 }
-.agg-node.dim {
-  opacity: 0.2;
+.agg-card.dim {
+  opacity: 0.22;
 }
-.agg-node .agg-title {
-  font-weight: 700;
+.agg-card.has-cp {
+  box-shadow: 0 0 0 2px #ef4444, 0 2px 7px rgba(15, 23, 42, 0.14);
 }
-.agg-node .agg-sub {
-  color: var(--muted);
+.agg-card .agg-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  color: #fff;
+}
+.agg-card .agg-prefix {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+.agg-card .agg-count {
+  margin-left: auto;
+  font-weight: 800;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.26);
+  border-radius: 6px;
+  padding: 0 7px;
+}
+.agg-card .agg-ms {
   font-size: 11px;
-  margin-top: 2px;
+}
+.agg-card .agg-cp {
+  font-size: 10px;
+  font-weight: 800;
+  background: #ef4444;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.agg-card .agg-body {
+  padding: 7px 10px 9px;
 }
 .agg-bars {
   display: flex;
-  height: 6px;
-  margin-top: 6px;
-  border-radius: 3px;
+  height: 7px;
+  border-radius: 4px;
   overflow: hidden;
   background: #e2e8f0;
 }
 .agg-bars > span {
   display: block;
 }
-.agg-badges {
-  position: absolute;
-  top: 6px;
-  right: 8px;
+.agg-foot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+}
+.agg-prog {
+  flex: 1;
+  height: 5px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.agg-prog > i {
+  display: block;
+  height: 100%;
+  background: #475569;
+}
+.agg-prog-num {
   font-size: 11px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.agg-card.continuation {
+  border-style: dashed;
+  opacity: 0.85;
 }
 
 .react-flow__handle {
