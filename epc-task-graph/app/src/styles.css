@@ -520,6 +520,55 @@ input {
 .x:hover {
   color: #ef4444;
 }
+/* 依存追加コンボボックス（§2.9 第二経路・GUI接続） */
+.depadder {
+  position: relative;
+  margin-top: 3px;
+}
+.depadder-input {
+  width: 100%;
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+}
+.depadder-list {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 2px;
+  background: #fff;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+  max-height: 220px;
+  overflow: auto;
+}
+.depadder-item {
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.depadder-item:hover {
+  background: #eff6ff;
+}
+.depadder-item .mono {
+  color: var(--muted);
+}
+@media (prefers-color-scheme: dark) {
+  .depadder-list {
+    background: #0f172a;
+  }
+  .depadder-item:hover {
+    background: #1e293b;
+  }
+}
 .legend span {
   display: inline-flex;
   align-items: center;

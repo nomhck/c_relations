@@ -1,8 +1,61 @@
 // 右パネル（§2.9）: 属性フォーム＋依存（先行/後続）＋WBS（親/兄弟）＋CPM欄（ES/EF/LS/LF/TF）。
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../store/store';
 import { selectCpm } from '../store/selectors';
 import { DISCIPLINES, STATUSES, wbsPath, type Dependency, type Task } from '../domain';
+
+// 依存追加コンボボックス（§2.9 第二経路・ユーザー要望③）: 名前/WBSで検索し候補をクリックで接続。
+// 追加は addDependencyChecked 経由なので循環は自動拒否（トースト）。グラフのドラッグ接続の代替GUI。
+function DepAdder({
+  label,
+  exclude,
+  onPick,
+}: {
+  label: string;
+  exclude: Set<string>;
+  onPick: (id: string) => boolean;
+}) {
+  const tasks = useApp((s) => s.tasks);
+  const [q, setQ] = useState('');
+  const results = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return [];
+    const out: Task[] = [];
+    for (const t of tasks) {
+      if (exclude.has(t.id)) continue;
+      if ((t.name + ' ' + t.wbsCode).toLowerCase().includes(s)) {
+        out.push(t);
+        if (out.length >= 8) break;
+      }
+    }
+    return out;
+  }, [q, tasks, exclude]);
+  return (
+    <div className="depadder">
+      <input
+        className="depadder-input"
+        placeholder={label}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      {results.length ? (
+        <div className="depadder-list">
+          {results.map((t) => (
+            <div
+              key={t.id}
+              className="depadder-item"
+              onClick={() => {
+                if (onPick(t.id)) setQ('');
+              }}
+            >
+              <span className="mono">{t.wbsCode || '—'}</span> {t.name || '（無題）'}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function RightPanel() {
   const task = useApp((s) => s.tasks.find((t) => t.id === s.selection.taskId));
@@ -114,10 +167,20 @@ export function RightPanel() {
       <h3>依存（先行/後続）</h3>
       <div className="stat">先行（predecessors）</div>
       {preds.length ? preds.map((d) => depItem(d, d.predecessorId)) : <div className="stat">— なし</div>}
+      <DepAdder
+        label="＋先行を追加（名前/WBSで検索）"
+        exclude={new Set([task.id, ...preds.map((d) => d.predecessorId)])}
+        onPick={(otherId) => useApp.getState().addDependencyChecked(otherId, task.id)}
+      />
       <div className="stat" style={{ marginTop: 6 }}>
         後続（successors）
       </div>
       {succs.length ? succs.map((d) => depItem(d, d.successorId)) : <div className="stat">— なし</div>}
+      <DepAdder
+        label="＋後続を追加（名前/WBSで検索）"
+        exclude={new Set([task.id, ...succs.map((d) => d.successorId)])}
+        onPick={(otherId) => useApp.getState().addDependencyChecked(task.id, otherId)}
+      />
       <div className="row">
         <button className="btn" onClick={() => useApp.getState().toggleFocus(task.id)}>
           近傍フォーカス (H)
