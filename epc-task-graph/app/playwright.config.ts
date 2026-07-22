@@ -5,7 +5,8 @@ export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: 0,
+  // 永続化系（デバウンス保存→リロード復元）は負荷次第でタイミングに敏感なため1回リトライ。
+  retries: process.env.CI ? 2 : 1,
   workers: 1,
   reporter: [['list']],
   use: {

@@ -9,6 +9,7 @@ import { useApp } from '../store/store';
 import type { ActiveView } from '../domain';
 import { CanvasArea } from './CanvasArea';
 import { TableView } from './table/TableView';
+import { GanttView } from './gantt/GanttView';
 
 function Tab({
   view,
@@ -73,6 +74,9 @@ export function ViewShell() {
       } else if (e.key === 't' || e.key === 'T') {
         e.preventDefault();
         useApp.getState().setActiveView('table');
+      } else if (e.key === 'y' || e.key === 'Y') {
+        e.preventDefault();
+        useApp.getState().setActiveView('gantt');
       }
     };
     window.addEventListener('keydown', onKey);
@@ -84,7 +88,7 @@ export function ViewShell() {
       <div className="viewtabs">
         <Tab view="graph" label="グラフ" hint="G" />
         <Tab view="table" label="テーブル" hint="T" />
-        <Tab view="gantt" label="ガント" disabled />
+        <Tab view="gantt" label="ガント" hint="Y" />
       </div>
       <div className="viewstack">
         <div className="view-pane" style={{ display: activeView === 'graph' ? 'flex' : 'none' }}>
@@ -92,6 +96,9 @@ export function ViewShell() {
         </div>
         <div className="view-pane" style={{ display: activeView === 'table' ? 'flex' : 'none' }}>
           <TableView active={activeView === 'table'} />
+        </div>
+        <div className="view-pane" style={{ display: activeView === 'gantt' ? 'flex' : 'none' }}>
+          <GanttView active={activeView === 'gantt'} />
         </div>
       </div>
     </div>

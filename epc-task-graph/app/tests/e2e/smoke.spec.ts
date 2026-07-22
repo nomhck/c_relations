@@ -30,6 +30,9 @@ test('起動→タスク作成→後続接続→リロード後も残存する',
 
   await expect.poll(async () => (await counts(page)).tasks).toBe(base.tasks + 1);
 
+  // 編集入力が閉じてフォーカスが外れてから Tab（入力にフォーカス中はグラフの Tab 経路が無効）。
+  await expect(page.locator('input.task-name-input')).toBeHidden();
+
   // 選択中タスクから Tab で後続タスク＋依存を自動生成（§1.2-6 連続作成）
   await page.keyboard.press('Tab');
   const nameForSucc = page.locator('input.task-name-input');
