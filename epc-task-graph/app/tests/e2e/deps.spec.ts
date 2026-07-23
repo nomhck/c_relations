@@ -56,3 +56,22 @@ test('依存: 循環になる接続はコンボから追加できない（拒否
   await expect.poll(async () => await depsLen(page)).toBe(before);
   expect(ids.length).toBe(2);
 });
+
+test('依存タイプ: FS→SS 変更で後続の ES が再計算される（Phase2 CPM）', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => !!(window as any).__APP);
+  // A(dur4) → B(dur3) を FS で接続。B を選択。
+  await page.evaluate(() => {
+    const app = (window as any).__APP.getState();
+    const a = app.addTask({ wbsCode: '92', name: 'PA', durationDays: 4 });
+    const b = app.addTask({ wbsCode: '92', name: 'PB', durationDays: 3 });
+    app.addDependencyChecked(a.id, b.id); // FS
+    app.setSelection({ taskId: b.id });
+  });
+  // FS: B.ES = EF_A = +4d
+  await expect(page.getByTestId('cpm-es')).toContainText('+4d');
+
+  // 右パネルの依存タイプ select を SS に変更 → B.ES = ES_A = +0d に再計算。
+  await page.locator('.depitem', { hasText: 'PA' }).locator('.deptype').selectOption('SS');
+  await expect(page.getByTestId('cpm-es')).toContainText('+0d');
+});

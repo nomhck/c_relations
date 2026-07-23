@@ -156,6 +156,7 @@ export interface AppState {
   applyPositions: (map: Record<string, { x: number; y: number }>) => void;
   deleteTasks: (ids: string[]) => void;
   addDependencyChecked: (source: string, target: string) => boolean;
+  updateDep: (id: string, patch: Partial<Dependency>) => void; // 依存タイプ/ラグの編集（CPM連動）
   deleteDeps: (ids: string[]) => void;
   createSuccessor: (sourceId: string) => void;
 
@@ -496,6 +497,18 @@ export const useApp = create<AppState>()(
         });
         scheduleSave();
         return true;
+      },
+      updateDep: (id, patch) => {
+        set((s) => {
+          const d = s.dependencies.find((x) => x.id === id);
+          if (!d) return;
+          Object.assign(d, patch);
+          d.rev += 1;
+          d.updatedAt = nowISO();
+          d.updatedBy = s.me;
+          s.dirty.deps.add(id);
+        });
+        scheduleSave();
       },
       deleteDeps: (ids) => {
         const idset = new Set(ids);

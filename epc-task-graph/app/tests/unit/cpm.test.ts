@@ -109,6 +109,41 @@ describe('CPM Step1 手計算フィクスチャ', () => {
   });
 });
 
+describe('CPM 依存タイプ＋lag（Phase 2 手計算フィクスチャ）', () => {
+  const Dt = (pred: string, succ: string, type: Dependency['type'], lag = 0): Dependency =>
+    makeDep(pred, succ, { id: `${pred}->${succ}`, type, lagDays: lag });
+
+  it('SS+lag2: 後続は先行のES+2で始まる（A dur4 →SS2→ B dur3）', () => {
+    const res = computeCpm([T('A', 4), T('B', 3)], [Dt('A', 'B', 'SS', 2)], START);
+    checkTask(res, 'A', { es: 0, ef: 4, ls: 0, lf: 4, tf: 0, crit: true });
+    checkTask(res, 'B', { es: 2, ef: 5, ls: 2, lf: 5, tf: 0, crit: true });
+    expect(res.projectEnd).toBe(5);
+    expect([...res.criticalEdges]).toEqual(['A->B']);
+  });
+
+  it('FF+lag1: 後続は先行のEF+1で終わる（A dur4 →FF1→ B dur2）', () => {
+    const res = computeCpm([T('A', 4), T('B', 2)], [Dt('A', 'B', 'FF', 1)], START);
+    checkTask(res, 'A', { es: 0, ef: 4, ls: 0, lf: 4, tf: 0, crit: true });
+    checkTask(res, 'B', { es: 3, ef: 5, ls: 3, lf: 5, tf: 0, crit: true }); // EF_B=EF_A+1=5 → ES=3
+    expect(res.projectEnd).toBe(5);
+  });
+
+  it('SF+lag5: 後続の終了は先行の開始+5以降（A dur3 →SF5→ B dur2）', () => {
+    const res = computeCpm([T('A', 3), T('B', 2)], [Dt('A', 'B', 'SF', 5)], START);
+    checkTask(res, 'A', { es: 0, ef: 3, ls: 0, lf: 3, tf: 0, crit: true });
+    checkTask(res, 'B', { es: 3, ef: 5, ls: 3, lf: 5, tf: 0, crit: true }); // EF_B≥ES_A+5=5
+    expect(res.projectEnd).toBe(5);
+  });
+
+  it('FS+リード(-2): 後続は先行終了の2日前から開始できる（A dur5 →FS(-2)→ B dur3）', () => {
+    const res = computeCpm([T('A', 5), T('B', 3)], [Dt('A', 'B', 'FS', -2)], START);
+    checkTask(res, 'A', { es: 0, ef: 5, ls: 0, lf: 5, tf: 0, crit: true });
+    checkTask(res, 'B', { es: 3, ef: 6, ls: 3, lf: 6, tf: 0, crit: true }); // ES_B=EF_A-2=3
+    expect(res.projectEnd).toBe(6);
+    expect(res.byTask.get('B')!.esDate).toBe(addCalendarDays(START, 3));
+  });
+});
+
 describe('CPM × 表示パイプライン統合（§9.2「CPのみ表示」/ CP強調）', () => {
   // ダイヤ（fixture2）: 背骨 A→B→D。C は余裕ありで CP から外れる。
   const tasks = [T('A', 2), T('B', 4), T('C', 2), T('D', 1)];

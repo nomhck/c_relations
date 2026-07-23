@@ -83,9 +83,27 @@ export function RightPanel() {
       <span className="name" onClick={() => useApp.getState().setSelection({ taskId: otherId })}>
         {byId.get(otherId)?.name || otherId.slice(0, 6)}
       </span>
-      <span className="stat">
-        {d.type} {d.lagDays ? (d.lagDays > 0 ? '+' : '') + d.lagDays + 'd' : ''}
-      </span>
+      {/* 依存タイプ（FS/SS/FF/SF）とラグ（負=リード）を編集＝CPM に即反映（§9.1/Phase2） */}
+      <select
+        className="deptype"
+        title="依存タイプ"
+        value={d.type}
+        onChange={(e) => useApp.getState().updateDep(d.id, { type: e.target.value as Dependency['type'] })}
+      >
+        <option value="FS">FS</option>
+        <option value="SS">SS</option>
+        <option value="FF">FF</option>
+        <option value="SF">SF</option>
+      </select>
+      <input
+        className="deplag"
+        type="number"
+        title="ラグ日（負=リード）"
+        value={d.lagDays}
+        onChange={(e) =>
+          useApp.getState().updateDep(d.id, { lagDays: Math.round(Number(e.target.value) || 0) })
+        }
+      />
       <span className="x" title="依存削除" onClick={() => useApp.getState().deleteDeps([d.id])}>
         ×
       </span>
@@ -200,13 +218,13 @@ export function RightPanel() {
         </div>
       ))}
 
-      <h3>CPM（Step1: 暦日・FS）</h3>
+      <h3>CPM（暦日・FS/SS/FF/SF＋lag）</h3>
       {(() => {
         const r = cpm.byTask.get(task.id);
         if (!r) return <div className="stat">—（未計算）</div>;
         return (
           <>
-            <div className="stat">
+            <div className="stat" data-testid="cpm-es">
               ES <b>{r.esDate}</b>（+{r.es}d） · EF <b>{r.efDate}</b>（+{r.ef}d）
             </div>
             <div className="stat">

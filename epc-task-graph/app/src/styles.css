@@ -510,6 +510,20 @@ input {
   cursor: pointer;
   color: #1e40af;
 }
+.depitem .deptype {
+  font-size: 11px;
+  padding: 1px 2px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: #fff;
+}
+.depitem .deplag {
+  width: 44px;
+  font-size: 11px;
+  padding: 1px 3px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
 .depitem .name:hover {
   text-decoration: underline;
 }

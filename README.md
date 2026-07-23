@@ -77,8 +77,9 @@ epc-task-graph/
 - [x] **PR-T1／PR-T2** — 多ビュー器＋テーブル（仮想スクロール・多重ソート・複数行選択＋一括操作・WBS日付集計・wbsCode編集・Tab後続作成）※SavedViewへの列/ソート保存のみ保留
 - [x] **PR-G（Phase 3）** — ガントビュー（CPM連動バー・WBSサマリ・工種色分け・CP強調）
 - [x] **俯瞰デザイン刷新** — 集約カード＋WBSグリッド整列
+- [x] **関係ハイライト＋世代フィルタ** — 近傍フォーカス刷新（世代バッジ・ハイライト/抽出）／右パネルからGUI依存接続
+- [~] **Phase 2 — CPM** — 依存タイプ **FS/SS/FF/SF＋lag** 対応済み（右パネルで編集）。残: 稼働カレンダー・SNET/FNLT制約
 - [ ] Phase 1 PR5–8 — フィルタ/ビュー完成・検索・WBSツリー・俯瞰Canvas・キーボード（保存ビューUI含む）
-- [ ] Phase 2 — CPM完成（SS/FF/SF・カレンダー・制約）
 - [ ] Phase 4 — Azure本番化＋複数人編集（Entra ID・行単位衝突検知）
 - [ ] Phase 5 — MS Project（MSPDI）連携
 

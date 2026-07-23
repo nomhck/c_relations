@@ -1,8 +1,8 @@
 // ============================================================================
-// CPM（クリティカルパス法）Step1 — §9.1。UI/React/DOM 非依存の純関数。
-// スコープ（Step1）: 暦日ベース・依存は FS のみ・lag 無し（SS/FF/SF・カレンダー・
-//   SNET/FNLT 制約は Phase 2 で追加）。所要日数は task.durationDays、開始基準日は
-//   プロジェクト設定（dataDate）。
+// CPM（クリティカルパス法）— §9.1 / Phase 2。UI/React/DOM 非依存の純関数。
+// スコープ: 暦日ベース・依存タイプ **FS/SS/FF/SF ＋ lag（負でリード）** に対応。所要日数は
+//   task.durationDays、開始基準日は project.dataDate。（稼働カレンダー・SNET/FNLT 制約は
+//   Phase 2 の後続増分で追加予定。）
 // 内部は「projectStart からの暦日オフセット（number）」で計算し、表示用に実日付へ変換。
 // 性能: O(V+E)、4,000ノード・6,000エッジで <20ms（§9.1）。メインスレッド同期でよい。
 // ============================================================================
@@ -63,9 +63,9 @@ const EMPTY: Omit<CpmResult, 'projectStartDate' | 'projectEndDate'> & {
 };
 
 /**
- * CPM Step1（暦日・FS・lag無し）を計算する。
+ * CPM（暦日・FS/SS/FF/SF＋lag）を計算する。
  * @param tasks       タスク配列（durationDays を使用。milestone は 0）
- * @param deps        依存配列（type は FS 前提で処理。他タイプは Step1 では FS 同等に扱う）
+ * @param deps        依存配列（type=FS/SS/FF/SF・lagDays を尊重。負の lag はリード）
  * @param projectStart 開始基準日（yyyy-mm-dd。通常 project.dataDate）
  */
 export function computeCpm(
@@ -79,7 +79,7 @@ export function computeCpm(
 
   const taskById = new Map<string, Task>();
   for (const t of tasks) taskById.set(t.id, t);
-  const { succ, pred } = buildAdjacency(deps);
+  const { succ } = buildAdjacency(deps);
 
   // ---- トポロジカルソート（Kahn）。循環は UI 上起き得ないが防御（§9.1-1）----
   const indeg = new Map<string, number>();
@@ -109,32 +109,86 @@ export function computeCpm(
     return t.isMilestone ? 0 : Math.max(0, t.durationDays || 0);
   };
 
-  // ---- 前進計算（トポ順）: ES = max(先行の EF)、EF = ES + dur（§9.1-2, FS）----
+  // 依存を後続/先行ごとにグルーピング（型・lag を持つ本体を保持。同一ペア複数依存も個別に扱う）。
+  const incoming = new Map<string, Dependency[]>(); // key=successorId
+  const outgoing = new Map<string, Dependency[]>(); // key=predecessorId
+  for (const d of deps) {
+    if (!taskById.has(d.predecessorId) || !taskById.has(d.successorId)) continue;
+    (incoming.get(d.successorId) ?? incoming.set(d.successorId, []).get(d.successorId)!).push(d);
+    (outgoing.get(d.predecessorId) ?? outgoing.set(d.predecessorId, []).get(d.predecessorId)!).push(d);
+  }
+
+  // ---- 前進計算（トポ順）: 依存タイプ＋lag で後続の最早開始下限を課す（§9.1-2 / Phase2）----
+  // FS: ES_s ≥ EF_p+lag ／ SS: ES_s ≥ ES_p+lag ／ FF: EF_s ≥ EF_p+lag ／ SF: EF_s ≥ ES_p+lag
+  //   （EF系は ES = 下限 − dur(s) に変換）。lag は負でリード。ES は 0（基準日）を下限に丸める。
   const es = new Map<string, number>();
   const ef = new Map<string, number>();
   for (const id of order) {
+    const d = dur(id);
     let start = 0;
-    const ps = pred.get(id);
-    if (ps) for (const p of ps) start = Math.max(start, ef.get(p) ?? 0);
+    for (const dep of incoming.get(id) ?? []) {
+      const p = dep.predecessorId;
+      const lag = dep.lagDays || 0;
+      let req: number;
+      switch (dep.type) {
+        case 'SS':
+          req = (es.get(p) ?? 0) + lag;
+          break;
+        case 'FF':
+          req = (ef.get(p) ?? 0) + lag - d;
+          break;
+        case 'SF':
+          req = (es.get(p) ?? 0) + lag - d;
+          break;
+        case 'FS':
+        default:
+          req = (ef.get(p) ?? 0) + lag;
+          break;
+      }
+      if (req > start) start = req;
+    }
     es.set(id, start);
-    ef.set(id, start + dur(id));
+    ef.set(id, start + d);
   }
 
   const projectEnd = Math.max(0, ...order.map((id) => ef.get(id) ?? 0));
 
-  // ---- 後退計算（逆トポ順）: LF = min(後続の LS)、後続なしは projectEnd（§9.1-3）----
+  // ---- 後退計算（逆トポ順）: 依存タイプ＋lag で先行の最遅終了上限を課す（§9.1-3 / Phase2）----
+  // FS: LF_p ≤ LS_s−lag ／ SS: LS_p ≤ LS_s−lag ／ FF: LF_p ≤ LF_s−lag ／ SF: LS_p ≤ LF_s−lag
+  //   （LS系は LF = 上限 + dur(p) に変換）。後続なしは projectEnd。
   const ls = new Map<string, number>();
   const lf = new Map<string, number>();
   for (let i = order.length - 1; i >= 0; i--) {
     const id = order[i];
+    const d = dur(id);
+    const outs = outgoing.get(id);
     let finish = projectEnd;
-    const ss = succ.get(id);
-    if (ss && ss.size) {
+    if (outs && outs.length) {
       finish = Infinity;
-      for (const s of ss) finish = Math.min(finish, ls.get(s) ?? projectEnd);
+      for (const dep of outs) {
+        const s = dep.successorId;
+        const lag = dep.lagDays || 0;
+        let req: number;
+        switch (dep.type) {
+          case 'SS':
+            req = (ls.get(s) ?? projectEnd) - lag + d;
+            break;
+          case 'FF':
+            req = (lf.get(s) ?? projectEnd) - lag;
+            break;
+          case 'SF':
+            req = (lf.get(s) ?? projectEnd) - lag + d;
+            break;
+          case 'FS':
+          default:
+            req = (ls.get(s) ?? projectEnd) - lag;
+            break;
+        }
+        if (req < finish) finish = req;
+      }
     }
     lf.set(id, finish);
-    ls.set(id, finish - dur(id));
+    ls.set(id, finish - d);
   }
 
   // ---- TF = LS − ES、TF ≤ 0 がクリティカル（§9.1-4）----
@@ -164,13 +218,32 @@ export function computeCpm(
     });
   }
 
-  // ---- 駆動依存（クリティカルなエッジ）: 両端がクリティカルで pred.EF == succ.ES（FS）----
+  // ---- 駆動依存（クリティカルなエッジ）: 両端がクリティカルで、後続ESがこの依存の前進要件に一致 ----
   const criticalEdges = new Set<string>();
   for (const d of deps) {
     if (!criticalTasks.has(d.predecessorId) || !criticalTasks.has(d.successorId)) continue;
-    const pEf = ef.get(d.predecessorId);
-    const sEs = es.get(d.successorId);
-    if (pEf != null && sEs != null && Math.abs(pEf - sEs) < 1e-9) criticalEdges.add(d.id);
+    const p = d.predecessorId;
+    const s = d.successorId;
+    const lag = d.lagDays || 0;
+    const ds = dur(s);
+    let req: number;
+    switch (d.type) {
+      case 'SS':
+        req = (es.get(p) ?? 0) + lag;
+        break;
+      case 'FF':
+        req = (ef.get(p) ?? 0) + lag - ds;
+        break;
+      case 'SF':
+        req = (es.get(p) ?? 0) + lag - ds;
+        break;
+      case 'FS':
+      default:
+        req = (ef.get(p) ?? 0) + lag;
+        break;
+    }
+    const sEs = es.get(s);
+    if (sEs != null && Math.abs(sEs - req) < 1e-9) criticalEdges.add(d.id);
   }
 
   return {
