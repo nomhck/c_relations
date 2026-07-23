@@ -75,3 +75,24 @@ test('依存タイプ: FS→SS 変更で後続の ES が再計算される（Pha
   await page.locator('.depitem', { hasText: 'PA' }).locator('.deptype').selectOption('SS');
   await expect(page.getByTestId('cpm-es')).toContainText('+0d');
 });
+
+test('日付制約 SNET: 右パネルで設定すると ES がその日以降へ丸められる（Phase2）', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => !!(window as any).__APP);
+  // 単独タスクを作成・選択（ES=+0d）。基準日+7 を SNET に設定。
+  const snetDate = await page.evaluate(() => {
+    const app = (window as any).__APP.getState();
+    const t = app.addTask({ wbsCode: '93', name: 'SN', durationDays: 3 });
+    app.setSelection({ taskId: t.id });
+    const base = app.project.dataDate;
+    const d = new Date(base + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 7);
+    return d.toISOString().slice(0, 10);
+  });
+  await expect(page.getByTestId('cpm-es')).toContainText('+0d');
+
+  await page.getByTestId('constraint-type').selectOption('SNET');
+  await page.getByTestId('constraint-date').fill(snetDate);
+  // SNET により ES = 基準日+7 → +7d
+  await expect(page.getByTestId('cpm-es')).toContainText('+7d');
+});

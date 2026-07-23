@@ -144,6 +144,43 @@ describe('CPM 依存タイプ＋lag（Phase 2 手計算フィクスチャ）', (
   });
 });
 
+describe('CPM 日付制約 SNET/FNLT/ASAP（Phase 2 手計算フィクスチャ）', () => {
+  it('SNET: 後続の開始をこの日以降に固定 → 先行に余裕（float）が生まれる', () => {
+    const A = makeTask({ id: 'A', name: 'A', durationDays: 2 });
+    const B = makeTask({
+      id: 'B',
+      name: 'B',
+      durationDays: 2,
+      constraintType: 'SNET',
+      constraintDate: addCalendarDays(START, 10),
+    });
+    const res = computeCpm([A, B], [makeDep('A', 'B', { id: 'A->B' })], START);
+    checkTask(res, 'A', { es: 0, ef: 2, ls: 8, lf: 10, tf: 8, crit: false });
+    checkTask(res, 'B', { es: 10, ef: 12, ls: 10, lf: 12, tf: 0, crit: true });
+    expect(res.projectEnd).toBe(12);
+  });
+
+  it('FNLT: 前進EFより早い期限は TF を負にしクリティカル化（遅延警告）', () => {
+    const A = makeTask({ id: 'A', name: 'A', durationDays: 4 });
+    const B = makeTask({
+      id: 'B',
+      name: 'B',
+      durationDays: 4,
+      constraintType: 'FNLT',
+      constraintDate: addCalendarDays(START, 5),
+    });
+    const res = computeCpm([A, B], [makeDep('A', 'B', { id: 'A->B' })], START);
+    checkTask(res, 'B', { es: 4, ef: 8, ls: 1, lf: 5, tf: -3, crit: true });
+    checkTask(res, 'A', { es: 0, ef: 4, ls: -3, lf: 1, tf: -3, crit: true });
+  });
+
+  it('ASAP（既定）は制約なしと同じ', () => {
+    const A = makeTask({ id: 'A', name: 'A', durationDays: 3, constraintType: 'ASAP', constraintDate: null });
+    const res = computeCpm([A], [], START);
+    checkTask(res, 'A', { es: 0, ef: 3, ls: 0, lf: 3, tf: 0, crit: true });
+  });
+});
+
 describe('CPM × 表示パイプライン統合（§9.2「CPのみ表示」/ CP強調）', () => {
   // ダイヤ（fixture2）: 背骨 A→B→D。C は余裕ありで CP から外れる。
   const tasks = [T('A', 2), T('B', 4), T('C', 2), T('D', 1)];

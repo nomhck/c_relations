@@ -177,6 +177,32 @@ export function RightPanel() {
           マイルストーン
         </label>
       </div>
+      {/* 日付制約（§9.1/Phase2）: ASAP=なし / SNET=この日以降に開始 / FNLT=この日までに終了 */}
+      <div className="field">
+        <label>日付制約</label>
+        <div className="row">
+          <select
+            data-testid="constraint-type"
+            value={task.constraintType}
+            onChange={(e) => {
+              const ct = e.target.value as Task['constraintType'];
+              upd({ constraintType: ct, constraintDate: ct === 'ASAP' ? null : task.constraintDate });
+            }}
+          >
+            <option value="ASAP">なし（ASAP）</option>
+            <option value="SNET">SNET（以降に開始）</option>
+            <option value="FNLT">FNLT（までに終了）</option>
+          </select>
+          {task.constraintType !== 'ASAP' ? (
+            <input
+              data-testid="constraint-date"
+              type="date"
+              value={task.constraintDate || ''}
+              onChange={(e) => upd({ constraintDate: e.target.value || null })}
+            />
+          ) : null}
+        </div>
+      </div>
       <div className="field">
         <label>notes</label>
         <textarea rows={2} value={task.notes} onChange={(e) => upd({ notes: e.target.value })} />

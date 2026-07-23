@@ -1,8 +1,8 @@
 // ============================================================================
 // CPM（クリティカルパス法）— §9.1 / Phase 2。UI/React/DOM 非依存の純関数。
-// スコープ: 暦日ベース・依存タイプ **FS/SS/FF/SF ＋ lag（負でリード）** に対応。所要日数は
-//   task.durationDays、開始基準日は project.dataDate。（稼働カレンダー・SNET/FNLT 制約は
-//   Phase 2 の後続増分で追加予定。）
+// スコープ: 暦日ベース・依存タイプ **FS/SS/FF/SF ＋ lag（負でリード）**・日付制約
+//   **SNET（開始猶予下限）/ FNLT（終了期限上限）/ ASAP（既定）** に対応。所要日数は
+//   task.durationDays、開始基準日は project.dataDate。（稼働カレンダーは Phase 2 の残増分。）
 // 内部は「projectStart からの暦日オフセット（number）」で計算し、表示用に実日付へ変換。
 // 性能: O(V+E)、4,000ノード・6,000エッジで <20ms（§9.1）。メインスレッド同期でよい。
 // ============================================================================
@@ -109,6 +109,11 @@ export function computeCpm(
     return t.isMilestone ? 0 : Math.max(0, t.durationDays || 0);
   };
 
+  // 制約日（yyyy-mm-dd）→ 基準日からの暦日オフセット。SNET/FNLT で使用（§9.1 / Phase2）。
+  const startDate = (projectStart || '').slice(0, 10) || '2026-01-01';
+  const constraintOffset = (iso: string): number =>
+    Math.round((parseISODate(iso) - parseISODate(startDate)) / 86400000);
+
   // 依存を後続/先行ごとにグルーピング（型・lag を持つ本体を保持。同一ペア複数依存も個別に扱う）。
   const incoming = new Map<string, Dependency[]>(); // key=successorId
   const outgoing = new Map<string, Dependency[]>(); // key=predecessorId
@@ -146,6 +151,12 @@ export function computeCpm(
           break;
       }
       if (req > start) start = req;
+    }
+    // SNET（Start No Earlier Than）: この日以降にしか開始できない → ES を下限で丸める。
+    const t = taskById.get(id);
+    if (t && t.constraintType === 'SNET' && t.constraintDate) {
+      const off = constraintOffset(t.constraintDate);
+      if (off > start) start = off;
     }
     es.set(id, start);
     ef.set(id, start + d);
@@ -187,6 +198,13 @@ export function computeCpm(
         if (req < finish) finish = req;
       }
     }
+    // FNLT（Finish No Later Than）: この日までに終える → LF を上限で丸める。
+    // 前進 EF より早い期限なら TF が負になり「遅延（要注意）」としてクリティカル化する。
+    const t = taskById.get(id);
+    if (t && t.constraintType === 'FNLT' && t.constraintDate) {
+      const off = constraintOffset(t.constraintDate);
+      if (off < finish) finish = off;
+    }
     lf.set(id, finish);
     ls.set(id, finish - d);
   }
@@ -194,7 +212,6 @@ export function computeCpm(
   // ---- TF = LS − ES、TF ≤ 0 がクリティカル（§9.1-4）----
   const byTask = new Map<string, CpmTaskResult>();
   const criticalTasks = new Set<string>();
-  const startDate = (projectStart || '').slice(0, 10) || '2026-01-01';
   for (const t of tasks) {
     const id = t.id;
     const _es = es.get(id) ?? 0;
