@@ -4,11 +4,103 @@ import { useApp, selectActiveCalendar } from '../store/store';
 import { selectCpm } from '../store/selectors';
 import {
   deriveVisibleGraph,
+  naturalWbsCompare,
   DISCIPLINES,
   STATUSES,
   DISC_COLOR,
   type GraphFilter,
+  type Task,
 } from '../domain';
+
+// WBSツリーパネル（§1.3/§2.7）: WBS階層を折り畳み可能なツリーで表示。ラベルクリックでその
+// サブツリーに絞り込み（wbsPrefixes フィルタ・トグル）。件数付き。ナビの主役の一つ。
+interface WbsNode {
+  prefix: string;
+  count: number;
+  children: WbsNode[];
+}
+function buildWbsCountTree(tasks: Task[]): WbsNode[] {
+  const count = new Map<string, number>();
+  const childSet = new Map<string, Set<string>>(); // 親prefix（''=ルート）→子prefix集合
+  for (const t of tasks) {
+    const segs = (t.wbsCode || '')
+      .split('.')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    let path = '';
+    let parent = '';
+    for (const seg of segs) {
+      path = path ? path + '.' + seg : seg;
+      count.set(path, (count.get(path) ?? 0) + 1);
+      if (!childSet.has(parent)) childSet.set(parent, new Set());
+      childSet.get(parent)!.add(path);
+      parent = path;
+    }
+  }
+  const build = (prefix: string): WbsNode[] =>
+    [...(childSet.get(prefix) ?? [])]
+      .sort(naturalWbsCompare)
+      .map((p) => ({ prefix: p, count: count.get(p) ?? 0, children: build(p) }));
+  return build('');
+}
+
+function WbsTreePanel() {
+  const tasks = useApp((s) => s.tasks);
+  const activePrefixes = useApp((s) => s.viewSpec.filter.wbsPrefixes);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const tree = useMemo(() => buildWbsCountTree(tasks), [tasks]);
+  const active = new Set(activePrefixes ?? []);
+
+  const toggle = (p: string) =>
+    setExpanded((s) => {
+      const n = new Set(s);
+      if (n.has(p)) n.delete(p);
+      else n.add(p);
+      return n;
+    });
+  const clickNode = (p: string) => {
+    const cur = useApp.getState().viewSpec.filter.wbsPrefixes ?? [];
+    if (cur.length === 1 && cur[0] === p) useApp.getState().setFilter({ wbsPrefixes: undefined });
+    else useApp.getState().setFilter({ wbsPrefixes: [p] });
+  };
+  const renderNode = (node: WbsNode, depth: number): React.ReactNode => (
+    <div key={node.prefix}>
+      <div className={'wbs-tree-row' + (active.has(node.prefix) ? ' active' : '')}>
+        {node.children.length ? (
+          <button
+            className="wbs-tree-tog"
+            onClick={() => toggle(node.prefix)}
+            title={expanded.has(node.prefix) ? '折り畳み' : '展開'}
+          >
+            {expanded.has(node.prefix) ? '▾' : '▸'}
+          </button>
+        ) : (
+          <span className="wbs-tree-tog empty" />
+        )}
+        <span
+          className="wbs-tree-label"
+          style={{ paddingLeft: depth * 4 }}
+          title="このWBSで絞り込み（再クリックで解除）"
+          data-prefix={node.prefix}
+          onClick={() => clickNode(node.prefix)}
+        >
+          <span className="mono">{node.prefix}</span> <span className="muted">({node.count})</span>
+        </span>
+      </div>
+      {expanded.has(node.prefix) ? node.children.map((c) => renderNode(c, depth + 1)) : null}
+    </div>
+  );
+
+  if (!tree.length) return null;
+  return (
+    <>
+      <h3>WBSツリー（§2.7）</h3>
+      <div className="wbs-tree" data-testid="wbs-tree">
+        {tree.map((n) => renderNode(n, 0))}
+      </div>
+    </>
+  );
+}
 
 // 保存ビュー（§2.8/§12.3.8 PR-T2④）: 現在のフィルタ/表示/折り畳み/テーブル状態を名前付きで保存・適用。
 function SavedViews() {
@@ -182,6 +274,8 @@ export function LeftPanel() {
       </div>
 
       <SavedViews />
+
+      <WbsTreePanel />
 
       <h3>フィルタ（AND結合）</h3>
       <div className="field">
