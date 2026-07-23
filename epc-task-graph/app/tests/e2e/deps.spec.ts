@@ -60,6 +60,10 @@ test('依存: 循環になる接続はコンボから追加できない（拒否
 test('依存タイプ: FS→SS 変更で後続の ES が再計算される（Phase2 CPM）', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => !!(window as any).__APP);
+  // オフセット断定を決定的にするため全曜日稼働（土日も稼働＝線形）に。
+  await page.evaluate(() =>
+    (window as any).__APP.getState().updateCalendar({ workingDays: [0, 1, 2, 3, 4, 5, 6] }),
+  );
   // A(dur4) → B(dur3) を FS で接続。B を選択。
   await page.evaluate(() => {
     const app = (window as any).__APP.getState();
@@ -79,6 +83,9 @@ test('依存タイプ: FS→SS 変更で後続の ES が再計算される（Pha
 test('日付制約 SNET: 右パネルで設定すると ES がその日以降へ丸められる（Phase2）', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => !!(window as any).__APP);
+  await page.evaluate(() =>
+    (window as any).__APP.getState().updateCalendar({ workingDays: [0, 1, 2, 3, 4, 5, 6] }),
+  );
   // 単独タスクを作成・選択（ES=+0d）。基準日+7 を SNET に設定。
   const snetDate = await page.evaluate(() => {
     const app = (window as any).__APP.getState();

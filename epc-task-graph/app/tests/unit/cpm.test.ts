@@ -181,6 +181,36 @@ describe('CPM 日付制約 SNET/FNLT/ASAP（Phase 2 手計算フィクスチャ�
   });
 });
 
+describe('CPM 稼働カレンダー（Phase 2・週休/祝日を跨ぐと暦日で伸びる）', () => {
+  const MON = '2026-01-05'; // 月曜
+  const MONFRI = { workingDays: [1, 2, 3, 4, 5], holidays: [] };
+
+  it('週休2日: 木曜開始の3稼働日は土日を跨いで火曜(+8暦日)に終わる', () => {
+    const A = T('A', 3);
+    const B = T('B', 3);
+    const res = computeCpm([A, B], [makeDep('A', 'B', { id: 'A->B' })], MON, MONFRI);
+    // A: 月(0)開始→木(3)終了。B: 木(3)開始→3稼働日(木金・月火)で翌火(8)終了。
+    checkTask(res, 'A', { es: 0, ef: 3, ls: 0, lf: 3, tf: 0, crit: true });
+    checkTask(res, 'B', { es: 3, ef: 8, ls: 3, lf: 8, tf: 0, crit: true });
+    expect(res.projectEnd).toBe(8);
+    expect(res.byTask.get('B')!.esDate).toBe(addCalendarDays(MON, 3)); // 2026-01-08 木
+    expect(res.byTask.get('B')!.efDate).toBe(addCalendarDays(MON, 8)); // 2026-01-13 火
+  });
+
+  it('祝日: 途中の祝日(火)は非稼働として跨ぐ（月開始の2稼働日が水(+3)終了）', () => {
+    const A = T('A', 2);
+    const res = computeCpm([A], [], MON, { workingDays: [1, 2, 3, 4, 5], holidays: ['2026-01-06'] });
+    checkTask(res, 'A', { es: 0, ef: 3, ls: 0, lf: 3, tf: 0, crit: true }); // 月(稼働)+火(祝)跨ぎ+水(稼働)
+    expect(res.byTask.get('A')!.efDate).toBe(addCalendarDays(MON, 3));
+  });
+
+  it('土日も稼働日に設定すれば線形（全曜日稼働＝従来どおり EF=ES+d）', () => {
+    const A = T('A', 3);
+    const res = computeCpm([A], [], MON, { workingDays: [0, 1, 2, 3, 4, 5, 6], holidays: [] });
+    checkTask(res, 'A', { es: 0, ef: 3, ls: 0, lf: 3, tf: 0, crit: true });
+  });
+});
+
 describe('CPM × 表示パイプライン統合（§9.2「CPのみ表示」/ CP強調）', () => {
   // ダイヤ（fixture2）: 背骨 A→B→D。C は余裕ありで CP から外れる。
   const tasks = [T('A', 2), T('B', 4), T('C', 2), T('D', 1)];

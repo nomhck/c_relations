@@ -5,7 +5,7 @@
 // ============================================================================
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useApp, ALL_TABLE_COLUMNS } from '../../store/store';
+import { useApp, ALL_TABLE_COLUMNS, selectActiveCalendar } from '../../store/store';
 import { selectCpm, selectTableRows } from '../../store/selectors';
 import type { TableColumnKey, TableRow, Task } from '../../domain';
 import { COLUMN_META, ROW_HEIGHT } from './cells';
@@ -24,7 +24,11 @@ export function TableView({ active }: { active: boolean }) {
   const selection = useApp((s) => s.selection);
   const selectedIds = useApp((s) => s.selectedIds);
 
-  const cpm = useMemo(() => selectCpm(tasks, dependencies, dataDate), [tasks, dependencies, dataDate]);
+  const calendar = useApp(selectActiveCalendar);
+  const cpm = useMemo(
+    () => selectCpm(tasks, dependencies, dataDate, calendar),
+    [tasks, dependencies, dataDate, calendar],
+  );
   const augSpec = useMemo(
     () => ({ ...viewSpec, criticalTasks: cpm.criticalTasks, criticalEdges: cpm.criticalEdges, cpHighlight }),
     [viewSpec, cpm, cpHighlight],

@@ -534,6 +534,34 @@ input {
 .x:hover {
   color: #ef4444;
 }
+/* 稼働カレンダー: 曜日トグル */
+.wd-row {
+  gap: 4px;
+}
+.wd-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.wd-btn.on {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.wd-btn.weekend:not(.on) {
+  color: #dc2626;
+}
+.wd-btn.weekend.on {
+  background: #059669;
+  border-color: #059669;
+}
+
 /* 依存追加コンボボックス（§2.9 第二経路・GUI接続） */
 .depadder {
   position: relative;

@@ -1,6 +1,6 @@
 // 右パネル（§2.9）: 属性フォーム＋依存（先行/後続）＋WBS（親/兄弟）＋CPM欄（ES/EF/LS/LF/TF）。
 import { useMemo, useState } from 'react';
-import { useApp } from '../store/store';
+import { useApp, selectActiveCalendar } from '../store/store';
 import { selectCpm } from '../store/selectors';
 import { DISCIPLINES, STATUSES, wbsPath, type Dependency, type Task } from '../domain';
 
@@ -62,7 +62,8 @@ export function RightPanel() {
   const deps = useApp((s) => s.dependencies);
   const tasks = useApp((s) => s.tasks);
   const dataDate = useApp((s) => s.project.dataDate);
-  const cpm = useMemo(() => selectCpm(tasks, deps, dataDate), [tasks, deps, dataDate]);
+  const calendar = useApp(selectActiveCalendar);
+  const cpm = useMemo(() => selectCpm(tasks, deps, dataDate, calendar), [tasks, deps, dataDate, calendar]);
 
   if (!task)
     return (

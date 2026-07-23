@@ -1,8 +1,9 @@
 // ============================================================================
 // CPM（クリティカルパス法）— §9.1 / Phase 2。UI/React/DOM 非依存の純関数。
-// スコープ: 暦日ベース・依存タイプ **FS/SS/FF/SF ＋ lag（負でリード）**・日付制約
-//   **SNET（開始猶予下限）/ FNLT（終了期限上限）/ ASAP（既定）** に対応。所要日数は
-//   task.durationDays、開始基準日は project.dataDate。（稼働カレンダーは Phase 2 の残増分。）
+// スコープ（Phase 2 完了）: 依存タイプ **FS/SS/FF/SF ＋ lag（負でリード）**・日付制約
+//   **SNET/FNLT/ASAP**・**稼働カレンダー**（稼働曜日＋祝日。非稼働日は跨いで暦日で伸びる。
+//   全曜日稼働＋祝日なしなら線形で高速化＝従来挙動を厳密維持）に対応。所要日数は稼働日で数え、
+//   es/ef は暦日オフセット（ガントの線形軸を保つ）、開始基準日は project.dataDate。
 // 内部は「projectStart からの暦日オフセット（number）」で計算し、表示用に実日付へ変換。
 // 性能: O(V+E)、4,000ノード・6,000エッジで <20ms（§9.1）。メインスレッド同期でよい。
 // ============================================================================
@@ -72,6 +73,7 @@ export function computeCpm(
   tasks: Task[],
   deps: Dependency[],
   projectStart: string,
+  calendar?: { workingDays: number[]; holidays: string[] } | null,
 ): CpmResult {
   if (tasks.length === 0) {
     return { ...EMPTY, byTask: new Map(), criticalTasks: new Set(), criticalEdges: new Set(), projectStartDate: (projectStart || '').slice(0, 10), projectEndDate: (projectStart || '').slice(0, 10) };
@@ -114,6 +116,62 @@ export function computeCpm(
   const constraintOffset = (iso: string): number =>
     Math.round((parseISODate(iso) - parseISODate(startDate)) / 86400000);
 
+  // ---- 稼働カレンダー（§9.1 / Phase2）: 所要日数は「稼働日」で数え、非稼働日（休日曜日/祝日）は
+  //   スケジュールが跨ぐ＝暦日で伸びる。es/ef は暦日オフセットのまま（ガントの線形軸を保つ）。
+  //   workingDays が全曜日かつ祝日なしなら線形（従来どおり EF=ES+d）で高速化＝既存挙動を厳密維持。
+  const wdSet = new Set(calendar?.workingDays ?? [0, 1, 2, 3, 4, 5, 6]);
+  const holSet = new Set((calendar?.holidays ?? []).map((h) => h.slice(0, 10)));
+  const linearCal = wdSet.size >= 7 && holSet.size === 0;
+  const baseMs = parseISODate(startDate);
+  const isWorking = (off: number): boolean => {
+    if (linearCal) return true;
+    const dow = new Date(baseMs + off * 86400000).getUTCDay();
+    if (!wdSet.has(dow)) return false;
+    return !holSet.has(addCalendarDays(startDate, off));
+  };
+  const nextWorking = (off: number): number => {
+    if (linearCal) return off;
+    let o = off;
+    let g = 0;
+    while (!isWorking(o) && g++ < 3660) o++;
+    return o;
+  };
+  const prevWorking = (off: number): number => {
+    if (linearCal) return off;
+    let o = off;
+    let g = 0;
+    while (!isWorking(o) && g++ < 3660) o--;
+    return o;
+  };
+  // 稼働日 d 日分を前方に消化した先の暦日オフセット（排他的終端 = EF）。off は稼働日想定。
+  const addWorkingDays = (off: number, d: number): number => {
+    if (linearCal) return off + d;
+    if (d <= 0) return off;
+    let cur = off;
+    let consumed = 0;
+    let g = 0;
+    while (consumed < d && g++ < 200000) {
+      if (isWorking(cur)) consumed++;
+      cur++;
+    }
+    return cur;
+  };
+  // 稼働日 d 日分を後方に戻した暦日オフセット（= LS）。
+  const subWorkingDays = (off: number, d: number): number => {
+    if (linearCal) return off - d;
+    if (d <= 0) return off;
+    let cur = off;
+    let consumed = 0;
+    let g = 0;
+    while (consumed < d && g++ < 200000) {
+      cur--;
+      if (isWorking(cur)) consumed++;
+    }
+    return cur;
+  };
+  // LS 上限（lsBound）に対応する LF 上限。start を稼働日へ丸めてから d 日消化（線形時 = lsBound+d）。
+  const lfFromLs = (lsBound: number, d: number): number => addWorkingDays(prevWorking(lsBound), d);
+
   // 依存を後続/先行ごとにグルーピング（型・lag を持つ本体を保持。同一ペア複数依存も個別に扱う）。
   const incoming = new Map<string, Dependency[]>(); // key=successorId
   const outgoing = new Map<string, Dependency[]>(); // key=predecessorId
@@ -140,10 +198,10 @@ export function computeCpm(
           req = (es.get(p) ?? 0) + lag;
           break;
         case 'FF':
-          req = (ef.get(p) ?? 0) + lag - d;
+          req = subWorkingDays((ef.get(p) ?? 0) + lag, d); // EF_s≥EF_p+lag を ES_s 下限へ
           break;
         case 'SF':
-          req = (es.get(p) ?? 0) + lag - d;
+          req = subWorkingDays((es.get(p) ?? 0) + lag, d); // EF_s≥ES_p+lag を ES_s 下限へ
           break;
         case 'FS':
         default:
@@ -158,8 +216,9 @@ export function computeCpm(
       const off = constraintOffset(t.constraintDate);
       if (off > start) start = off;
     }
+    start = nextWorking(start); // ES は稼働日に丸める
     es.set(id, start);
-    ef.set(id, start + d);
+    ef.set(id, addWorkingDays(start, d)); // EF は稼働日 d 日分先（非稼働日は跨いで伸びる）
   }
 
   const projectEnd = Math.max(0, ...order.map((id) => ef.get(id) ?? 0));
@@ -182,13 +241,13 @@ export function computeCpm(
         let req: number;
         switch (dep.type) {
           case 'SS':
-            req = (ls.get(s) ?? projectEnd) - lag + d;
+            req = lfFromLs((ls.get(s) ?? projectEnd) - lag, d); // LS_p ≤ LS_s−lag を LF_p 上限へ
             break;
           case 'FF':
             req = (lf.get(s) ?? projectEnd) - lag;
             break;
           case 'SF':
-            req = (lf.get(s) ?? projectEnd) - lag + d;
+            req = lfFromLs((lf.get(s) ?? projectEnd) - lag, d); // LS_p ≤ LF_s−lag を LF_p 上限へ
             break;
           case 'FS':
           default:
@@ -206,7 +265,7 @@ export function computeCpm(
       if (off < finish) finish = off;
     }
     lf.set(id, finish);
-    ls.set(id, finish - d);
+    ls.set(id, subWorkingDays(finish, d)); // LS は稼働日 d 日分を後退（非稼働日は跨ぐ）
   }
 
   // ---- TF = LS − ES、TF ≤ 0 がクリティカル（§9.1-4）----
@@ -249,10 +308,10 @@ export function computeCpm(
         req = (es.get(p) ?? 0) + lag;
         break;
       case 'FF':
-        req = (ef.get(p) ?? 0) + lag - ds;
+        req = subWorkingDays((ef.get(p) ?? 0) + lag, ds);
         break;
       case 'SF':
-        req = (es.get(p) ?? 0) + lag - ds;
+        req = subWorkingDays((es.get(p) ?? 0) + lag, ds);
         break;
       case 'FS':
       default:

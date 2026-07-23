@@ -202,6 +202,7 @@ export interface AppState {
   // ---- 複数プロジェクト管理（§6.1）----
   renameProject: (name: string) => void;
   setDataDate: (d: string) => void;
+  updateCalendar: (patch: Partial<Calendar>) => void; // 稼働曜日/祝日の編集（CPM連動・§9.1 Phase2）
   refreshProjects: () => Promise<void>;
   switchProject: (id: string) => Promise<void>;
   newProject: (name?: string) => Promise<void>;
@@ -902,6 +903,15 @@ export const useApp = create<AppState>()(
         });
         scheduleSave();
       },
+      updateCalendar: (patch) => {
+        set((s) => {
+          const cal = s.calendars.find((c) => c.id === s.project.calendarId) ?? s.calendars[0];
+          if (!cal) return;
+          Object.assign(cal, patch);
+          s.project.updatedAt = nowISO();
+        });
+        scheduleSave();
+      },
       refreshProjects: async () => {
         try {
           const list = await getRepo().listProjects();
@@ -1003,3 +1013,8 @@ export const useApp = create<AppState>()(
 export function nameOf(id: string): string {
   return nameOfState(useApp.getState(), id);
 }
+
+// 現在の稼働カレンダー（project.calendarId で参照。無ければ先頭）。selectCpm に渡す。
+// 参照は immer が変更時のみ差し替えるため、全コンポーネントで同一参照＝selectCpm のキャッシュが効く。
+export const selectActiveCalendar = (s: AppState): Calendar | null =>
+  s.calendars.find((c) => c.id === s.project.calendarId) ?? s.calendars[0] ?? null;

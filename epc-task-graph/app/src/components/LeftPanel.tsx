@@ -1,6 +1,6 @@
-// 左パネル（§2.8）: 私は誰・組込みビュー・フィルタ（DIM/ISOLATE）・展開レベル・統計・凡例。
+// 左パネル（§2.8）: 私は誰・組込みビュー・フィルタ（DIM/ISOLATE）・展開レベル・稼働カレンダー・統計・凡例。
 import { useMemo } from 'react';
-import { useApp } from '../store/store';
+import { useApp, selectActiveCalendar } from '../store/store';
 import { selectCpm } from '../store/selectors';
 import {
   deriveVisibleGraph,
@@ -9,6 +9,53 @@ import {
   DISC_COLOR,
   type GraphFilter,
 } from '../domain';
+
+// 稼働カレンダー編集（§9.1/Phase2）: 稼働曜日トグル＋祝日。土日も稼働日に設定できる。
+const WD_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+function CalendarEditor() {
+  const cal = useApp(selectActiveCalendar);
+  if (!cal) return null;
+  const wd = new Set(cal.workingDays);
+  const toggle = (n: number) => {
+    if (wd.has(n) && cal.workingDays.length <= 1) return; // 全非稼働は不可
+    const next = wd.has(n)
+      ? cal.workingDays.filter((x) => x !== n)
+      : [...cal.workingDays, n].sort((a, b) => a - b);
+    useApp.getState().updateCalendar({ workingDays: next });
+  };
+  return (
+    <>
+      <h3>稼働カレンダー（§9.1）</h3>
+      <div className="row wd-row" data-testid="workingdays">
+        {WD_LABELS.map((lbl, n) => (
+          <button
+            key={n}
+            className={'wd-btn' + (wd.has(n) ? ' on' : '') + (n === 0 || n === 6 ? ' weekend' : '')}
+            title={wd.has(n) ? '稼働日（クリックで非稼働に）' : '非稼働日（クリックで稼働に）'}
+            onClick={() => toggle(n)}
+          >
+            {lbl}
+          </button>
+        ))}
+      </div>
+      <div className="field">
+        <label>祝日（1行1日・yyyy-mm-dd）</label>
+        <textarea
+          rows={2}
+          defaultValue={cal.holidays.join('\n')}
+          placeholder={'2026-05-03\n2026-05-04'}
+          onBlur={(e) => {
+            const hs = e.target.value
+              .split(/[\s,]+/)
+              .map((x) => x.trim())
+              .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
+            useApp.getState().updateCalendar({ holidays: hs });
+          }}
+        />
+      </div>
+    </>
+  );
+}
 
 type ArrayFilterKey = 'disciplines' | 'statuses';
 
@@ -23,7 +70,11 @@ export function LeftPanel() {
   const dataDate = useApp((s) => s.project.dataDate);
   const cpHighlight = useApp((s) => s.cpHighlight);
 
-  const cpm = useMemo(() => selectCpm(tasks, dependencies, dataDate), [tasks, dependencies, dataDate]);
+  const calendar = useApp(selectActiveCalendar);
+  const cpm = useMemo(
+    () => selectCpm(tasks, dependencies, dataDate, calendar),
+    [tasks, dependencies, dataDate, calendar],
+  );
   const stats = useMemo(
     () =>
       deriveVisibleGraph(tasks, dependencies, {
@@ -160,6 +211,8 @@ export function LeftPanel() {
           全折り畳み
         </button>
       </div>
+
+      <CalendarEditor />
 
       <h3>表示統計</h3>
       <div className="stat">

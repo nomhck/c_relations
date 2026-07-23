@@ -2,7 +2,7 @@
 //   デモ生成・Export/Import・保存状態。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
-import { useApp } from '../store/store';
+import { useApp, selectActiveCalendar } from '../store/store';
 import { selectCpm } from '../store/selectors';
 import { validateDoc, wbsPath } from '../domain';
 
@@ -11,7 +11,8 @@ function CompletionSummary() {
   const tasks = useApp((s) => s.tasks);
   const deps = useApp((s) => s.dependencies);
   const dataDate = useApp((s) => s.project.dataDate);
-  const cpm = useMemo(() => selectCpm(tasks, deps, dataDate), [tasks, deps, dataDate]);
+  const calendar = useApp(selectActiveCalendar);
+  const cpm = useMemo(() => selectCpm(tasks, deps, dataDate, calendar), [tasks, deps, dataDate, calendar]);
   const endDate = cpm.projectEndDate;
   const [flash, setFlash] = useState(false);
   const prev = useRef(endDate);

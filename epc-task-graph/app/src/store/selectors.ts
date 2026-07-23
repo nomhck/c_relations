@@ -6,6 +6,7 @@
 import {
   computeCpm,
   deriveTableRows,
+  type Calendar,
   type CpmResult,
   type CpmTaskResult,
   type Dependency,
@@ -19,25 +20,34 @@ interface CpmCache {
   tasks: Task[] | null;
   deps: Dependency[] | null;
   dataDate: string | null;
+  calendar: Calendar | null;
   result: CpmResult | null;
 }
 
-const cache: CpmCache = { tasks: null, deps: null, dataDate: null, result: null };
+const cache: CpmCache = { tasks: null, deps: null, dataDate: null, calendar: null, result: null };
 
-// tasks/deps の配列参照（immer が変更時のみ差し替える）と dataDate で判定。
-export function selectCpm(tasks: Task[], deps: Dependency[], dataDate: string): CpmResult {
+// tasks/deps の配列参照（immer が変更時のみ差し替える）・dataDate・稼働カレンダー参照で判定。
+export function selectCpm(
+  tasks: Task[],
+  deps: Dependency[],
+  dataDate: string,
+  calendar?: Calendar | null,
+): CpmResult {
+  const cal = calendar ?? null;
   if (
     cache.result &&
     cache.tasks === tasks &&
     cache.deps === deps &&
-    cache.dataDate === dataDate
+    cache.dataDate === dataDate &&
+    cache.calendar === cal
   ) {
     return cache.result;
   }
-  const result = computeCpm(tasks, deps, dataDate);
+  const result = computeCpm(tasks, deps, dataDate, cal);
   cache.tasks = tasks;
   cache.deps = deps;
   cache.dataDate = dataDate;
+  cache.calendar = cal;
   cache.result = result;
   return result;
 }
