@@ -239,6 +239,9 @@ function GanttBar({
   selected: boolean;
   onSelect: () => void;
 }) {
+  // バー右端ドラッグで所要日数を編集（§9.3「閲覧＋duration変更」）。プレビュー中は暦日近似で伸縮し、
+  // 確定で updateTask → CPM が稼働カレンダー込みで再計算し正しい暦日スパンへスナップする。
+  const [drag, setDrag] = useState<{ startX: number; startDur: number; cur: number } | null>(null);
   const isWbs = row.kind === 'wbs';
   let es: number | null = null;
   let ef: number | null = null;
@@ -261,6 +264,7 @@ function GanttBar({
     <div
       className={'gantt-track' + (selected ? ' sel' : '')}
       style={{ transform: `translateY(${top}px)`, height: ROW_HEIGHT }}
+      data-id={row.id}
       onClick={onSelect}
     >
       {children}
@@ -276,7 +280,10 @@ function GanttBar({
     return rowEl(<div className="gantt-ms" style={{ left: x }} title={row.task!.name} />);
   }
 
-  const w = Math.max(3, (ef - es) * dayWidth);
+  const baseDur = !isWbs ? row.task!.durationDays : 0;
+  const w = drag
+    ? Math.max(3, (ef - es + (drag.cur - baseDur)) * dayWidth) // プレビューは暦日近似で伸縮
+    : Math.max(3, (ef - es) * dayWidth);
   const color = critical
     ? '#ef4444'
     : isWbs
@@ -286,11 +293,40 @@ function GanttBar({
 
   return rowEl(
     <div
-      className={'gantt-bar' + (isWbs ? ' summary' : '') + (critical ? ' crit' : '')}
+      className={'gantt-bar' + (isWbs ? ' summary' : '') + (critical ? ' crit' : '') + (drag ? ' dragging' : '')}
       style={{ left: x, width: w, background: color }}
       title={`${isWbs ? 'WBS ' + row.wbsPrefix : row.task!.name}: ${row.esMin ?? addCalendarDays(dataDate, es)} 〜 ${row.efMax ?? addCalendarDays(dataDate, ef)}`}
     >
       {!isWbs && progress > 0 ? <i className="gantt-prog" style={{ width: progress + '%' }} /> : null}
+      {drag ? <span className="gantt-dur-tip">{drag.cur}d</span> : null}
+      {/* 右端ハンドル: ドラッグで所要日数を編集（WBSサマリバーは編集不可） */}
+      {!isWbs ? (
+        <div
+          className="gantt-bar-handle"
+          title="ドラッグで所要日数を変更"
+          data-testid="gantt-bar-handle"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            setDrag({ startX: e.clientX, startDur: row.task!.durationDays, cur: row.task!.durationDays });
+          }}
+          onPointerMove={(e) => {
+            setDrag((d) => {
+              if (!d) return d;
+              const delta = Math.round((e.clientX - d.startX) / dayWidth);
+              return { ...d, cur: Math.max(0, d.startDur + delta) };
+            });
+          }}
+          onPointerUp={(e) => {
+            (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+            if (drag && drag.cur !== drag.startDur) {
+              useApp.getState().updateTask(row.id, { durationDays: drag.cur });
+            }
+            setDrag(null);
+          }}
+        />
+      ) : null}
     </div>,
   );
 }
