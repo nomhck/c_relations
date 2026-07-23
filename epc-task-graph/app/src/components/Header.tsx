@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { useApp, selectActiveCalendar } from '../store/store';
 import { selectCpm } from '../store/selectors';
-import { validateDoc, wbsPath } from '../domain';
+import { validateDoc, wbsPath, toMspdi, fromMspdi, emptyDoc } from '../domain';
 
 // プロジェクト完了日サマリ（§9.2）。完了日が動いたらフラッシュして即時フィードバック。
 function CompletionSummary() {
@@ -77,6 +77,45 @@ export function Header() {
   const canUndo = useStore(useApp.temporal, (s) => s.pastStates.length > 0);
   const canRedo = useStore(useApp.temporal, (s) => s.futureStates.length > 0);
   const fileRef = useRef<HTMLInputElement>(null);
+  const mspdiRef = useRef<HTMLInputElement>(null);
+
+  // ---- MSPDI（MS Project XML）連携（§8 / Phase5 下ごしらえ）----
+  const doExportMspdi = () => {
+    const s = useApp.getState();
+    const doc = s.toDoc();
+    const cpm = selectCpm(doc.tasks, doc.dependencies, doc.project.dataDate, selectActiveCalendar(s));
+    const blob = new Blob([toMspdi(doc, cpm)], { type: 'application/xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${doc.project.name}-${new Date().toISOString().slice(0, 10)}.mspdi.xml`;
+    a.click();
+  };
+  const doImportMspdi = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const { tasks, dependencies } = fromMspdi(reader.result as string);
+        if (!tasks.length) {
+          useApp.getState().showToast('MSPDIにタスクが見つかりません', true);
+          return;
+        }
+        const doc = emptyDoc('MSPDI取込 ' + new Date().toISOString().slice(0, 10));
+        doc.tasks = tasks;
+        doc.dependencies = dependencies;
+        const v = validateDoc(doc);
+        if (!v.ok) {
+          useApp.getState().showToast('取込検証エラー: ' + v.errors.slice(0, 2).join(' / '), true);
+          return;
+        }
+        useApp.getState().loadDoc(doc);
+        useApp.getState().layoutAll(); // 位置(0,0)を左→右DAGへ整列
+        useApp.getState().showToast('MSPDIを取り込みました（' + tasks.length + 'タスク）');
+      } catch {
+        useApp.getState().showToast('MSPDI解析に失敗しました', true);
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const doExport = () => {
     const doc = useApp.getState().toDoc();
@@ -151,6 +190,28 @@ export function Header() {
         style={{ display: 'none' }}
         onChange={(e) => {
           if (e.target.files?.[0]) doImport(e.target.files[0]);
+          e.target.value = '';
+        }}
+      />
+      <button className="btn" onClick={doExportMspdi} title="MS Project 形式(MSPDI XML)で出力">
+        MSPDI出力
+      </button>
+      <button
+        className="btn"
+        onClick={() => mspdiRef.current?.click()}
+        title="MS Project 形式(MSPDI XML)を取込"
+        data-testid="mspdi-import-btn"
+      >
+        MSPDI取込
+      </button>
+      <input
+        ref={mspdiRef}
+        type="file"
+        accept=".xml,.mspdi.xml"
+        style={{ display: 'none' }}
+        data-testid="mspdi-file"
+        onChange={(e) => {
+          if (e.target.files?.[0]) doImportMspdi(e.target.files[0]);
           e.target.value = '';
         }}
       />
