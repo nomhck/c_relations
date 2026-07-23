@@ -80,6 +80,9 @@ export interface SavedView {
   collapsedWbs: string[] | null;
   createdBy: string;
   updatedAt: string;
+  // 多ビュー（§12.3.8 PR-T2④・optional・前方互換）: テーブルのソート/表示列も保存できる。
+  tableSort?: TableSort[];
+  tableColumns?: TableColumnKey[];
 }
 
 export interface Calendar {

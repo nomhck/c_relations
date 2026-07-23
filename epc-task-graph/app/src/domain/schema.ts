@@ -78,6 +78,11 @@ export const savedViewSchema = z.object({
   collapsedWbs: z.array(z.string()).nullable(),
   createdBy: z.string(),
   updatedAt: z.string(),
+  // PR-T2④（optional・前方互換）: テーブルのソート/表示列。key/列はゆるく検証（適用時に妥当性判定）。
+  tableSort: z
+    .array(z.object({ key: z.string(), dir: z.enum(['asc', 'desc']) }))
+    .optional(),
+  tableColumns: z.array(z.string()).optional(),
 });
 
 export const calendarSchema = z.object({

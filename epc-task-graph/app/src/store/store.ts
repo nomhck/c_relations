@@ -183,6 +183,10 @@ export interface AppState {
   quickMyTasks: () => void;
   quickCriticalOnly: () => void;
   toggleCpHighlight: () => void;
+  // ---- 保存ビュー（§2.8/§12.3.8 PR-T2④）----
+  saveCurrentView: (name: string) => void; // 現在のフィルタ/表示/折り畳み/テーブル状態を保存
+  applyView: (id: string) => void; // 保存ビューを適用
+  deleteView: (id: string) => void;
 
   // ---- 多ビュー（§12.2）: 新設アクション ----
   setActiveView: (v: ActiveView) => void;
@@ -720,6 +724,61 @@ export const useApp = create<AppState>()(
         set((s) => {
           s.cpHighlight = !s.cpHighlight;
         }),
+
+      // ---- 保存ビュー（§2.8/§12.3.8 PR-T2④）----
+      saveCurrentView: (name) => {
+        const s = get();
+        const view: SavedView = {
+          id: newId(),
+          name: name.trim() || '無題ビュー',
+          filter: JSON.parse(JSON.stringify(s.viewSpec.filter)),
+          displayMode: s.viewSpec.displayMode,
+          collapsedWbs: [...s.viewSpec.collapsedWbs],
+          createdBy: s.me,
+          updatedAt: nowISO(),
+          tableSort: s.tableSort.length ? s.tableSort.map((t) => ({ ...t })) : undefined,
+          tableColumns: [...s.tableColumns],
+        };
+        set((st) => {
+          st.savedViews.push(view);
+        });
+        scheduleSave();
+        get().showToast('ビューを保存しました: ' + view.name);
+      },
+      applyView: (id) => {
+        const v = get().savedViews.find((x) => x.id === id);
+        if (!v) return;
+        set((s) => {
+          s.viewSpec.filter = JSON.parse(JSON.stringify(v.filter));
+          s.viewSpec.displayMode = v.displayMode;
+          const collapsed = v.collapsedWbs ?? [];
+          s.viewSpec.collapsedWbs = [...collapsed];
+          s.viewState.collapsedWbs = [...collapsed];
+          s.viewSpec.focus = null;
+          if (v.tableSort) {
+            s.tableSort = v.tableSort.filter(
+              (t) => String(t.key) !== 'deps' && (ALL_TABLE_COLUMNS as string[]).includes(t.key),
+            ) as TableSort[];
+          }
+          if (v.tableColumns && v.tableColumns.length) {
+            const valid = ALL_TABLE_COLUMNS.filter((k) => v.tableColumns!.includes(k));
+            if (valid.length) s.tableColumns = valid;
+          }
+        });
+        try {
+          localStorage.setItem(LS_TABLE_COLUMNS, JSON.stringify(get().tableColumns));
+        } catch {
+          /* ignore */
+        }
+        get().fit();
+        get().showToast('ビューを適用しました: ' + v.name);
+      },
+      deleteView: (id) => {
+        set((s) => {
+          s.savedViews = s.savedViews.filter((v) => v.id !== id);
+        });
+        scheduleSave();
+      },
 
       // ---- 多ビュー（§12.2）: 表示状態アクション（Undo対象外・Dexie非永続）----
       setActiveView: (v) => {

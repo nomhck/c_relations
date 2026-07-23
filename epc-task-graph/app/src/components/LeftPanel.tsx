@@ -1,5 +1,5 @@
 // 左パネル（§2.8）: 私は誰・組込みビュー・フィルタ（DIM/ISOLATE）・展開レベル・稼働カレンダー・統計・凡例。
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp, selectActiveCalendar } from '../store/store';
 import { selectCpm } from '../store/selectors';
 import {
@@ -9,6 +9,56 @@ import {
   DISC_COLOR,
   type GraphFilter,
 } from '../domain';
+
+// 保存ビュー（§2.8/§12.3.8 PR-T2④）: 現在のフィルタ/表示/折り畳み/テーブル状態を名前付きで保存・適用。
+function SavedViews() {
+  const views = useApp((s) => s.savedViews);
+  const [name, setName] = useState('');
+  const save = () => {
+    useApp.getState().saveCurrentView(name);
+    setName('');
+  };
+  return (
+    <>
+      <h3>保存ビュー（§2.8）</h3>
+      <div className="row">
+        <input
+          className="sv-input"
+          placeholder="現在のビューを保存…"
+          value={name}
+          data-testid="saveview-name"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+          }}
+        />
+        <button className="btn" data-testid="saveview-btn" onClick={save}>
+          保存
+        </button>
+      </div>
+      {views.length ? (
+        <div className="sv-list" data-testid="saveview-list">
+          {views.map((v) => (
+            <div className="sv-item" key={v.id}>
+              <span
+                className="name"
+                title="このビューを適用"
+                onClick={() => useApp.getState().applyView(v.id)}
+              >
+                {v.name}
+              </span>
+              <span className="x" title="削除" onClick={() => useApp.getState().deleteView(v.id)}>
+                ×
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="stat">— まだありません</div>
+      )}
+    </>
+  );
+}
 
 // 稼働カレンダー編集（§9.1/Phase2）: 稼働曜日トグル＋祝日。土日も稼働日に設定できる。
 const WD_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -130,6 +180,8 @@ export function LeftPanel() {
           マイルストーン
         </button>
       </div>
+
+      <SavedViews />
 
       <h3>フィルタ（AND結合）</h3>
       <div className="field">

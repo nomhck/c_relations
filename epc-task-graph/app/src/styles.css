@@ -534,6 +534,36 @@ input {
 .x:hover {
   color: #ef4444;
 }
+/* 保存ビュー */
+.sv-input {
+  flex: 1;
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+}
+.sv-list {
+  margin-top: 4px;
+}
+.sv-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px dashed #eef2f7;
+}
+.sv-item .name {
+  flex: 1;
+  cursor: pointer;
+  color: #1e40af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sv-item .name:hover {
+  text-decoration: underline;
+}
+
 /* 稼働カレンダー: 曜日トグル */
 .wd-row {
   gap: 4px;

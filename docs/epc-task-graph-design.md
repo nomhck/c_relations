@@ -852,7 +852,8 @@ Phase 0（`epc-task-graph/mock/index.html`）。**4,000ノードデモ生成→�
 - **Phase 2 CPM（依存タイプ＋lag）** ✅ `cpm.ts` を FS のみ → **FS/SS/FF/SF ＋ lag（負でリード）** に拡張（前進/後退計算・駆動エッジ判定を型対応。手計算フィクスチャ4件で検証）。右パネルの各依存にタイプ select ＋ lag 入力（`updateDep`）を追加＝編集が table/gantt/CP に即反映。
 - **Phase 2 CPM（日付制約）** ✅ SNET（開始猶予下限＝前進でESを丸め）/ FNLT（終了期限上限＝後退でLFを丸め・期限割れはTF負でクリティカル化＝遅延警告）/ ASAP（既定）に対応。右パネルに制約タイプselect＋日付入力。手計算フィクスチャ+3で検証。
 - **Phase 2 CPM（稼働カレンダー）** ✅ 稼働曜日（土日も稼働に設定可）＋祝日に対応。所要は稼働日で数え、非稼働日は跨いで暦日で伸びる（es/ef は暦日オフセットのままでガント線形軸を保持）。全曜日稼働＋祝日なしは線形fast-path＝従来挙動を厳密維持。前進=nextWorking/addWorkingDays、後退=subWorkingDays、SS/SF/FF は稼働日変換。左パネルに稼働曜日トグル＋祝日入力（`updateCalendar`）。手計算+3（週末跨ぎ/祝日/全曜日）・e2e+1（土日を稼働にするとEF+8d→+6d）。**→ Phase 2 完了**。
-- **次候補**: ④保存ビューUI（Phase1）／ ガントのバー端ドラッグ duration 編集／ Phase 4 Azure（サブスク用意後）。
+- **保存ビュー機能（§2.8/§12.3.8）＝ PR-T2④ 完了** ✅ 現在のフィルタ/表示モード/折り畳み＋テーブルのソート/表示列を名前付きで保存・適用・削除（左パネル）。SavedView に `tableSort?`/`tableColumns?` を optional 追加（schema も optional・前方互換・schemaVersion据え置き）。savedViews はパッチ永続。これで **PR-T2 は全項目完了**。
+- **次候補**: ガントのバー端ドラッグ duration 編集／ 検索(Cmd+K)・俯瞰Canvas 等 Phase1 PR5-8 残／ Phase 4 Azure（サブスク用意後）。
 
 ## ユーザーへの確認事項（2026-07-10 回答反映・確定）
 - **WBSコード体系の実態**: ✅ **維持されている見込み**（`1.2.3`形式の階層コード前提でOK）。折り畳み/分担の単位はWBSコードで進める。※実データ投入時に崩れが見つかったら§11-2のフォールバック（工種×エリア）を発動。
