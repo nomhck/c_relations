@@ -376,11 +376,15 @@ export function CanvasArea() {
         <MiniMap
           pannable
           zoomable
-          nodeColor={(nd) =>
-            nd.type === 'aggregate'
-              ? '#94a3b8'
-              : DISC_COLOR[(nd.data as RFNodeData)?.n?.kind === 'task' ? ((nd.data as RFNodeData).n as { task: { discipline: Discipline } }).task.discipline : 'OTHER'] || '#64748b'
-          }
+          nodeColor={(nd) => {
+            const n = (nd.data as RFNodeData)?.n;
+            // 俯瞰でもクリティカルパスを一目化（§2.10/§2.11）: CPタスク/CPを含む集約は赤系。
+            if (n?.kind === 'task' && cpm.criticalTasks.has(n.id)) return '#ef4444';
+            if (n?.kind === 'aggregate') return n.hasCritical ? '#f87171' : '#94a3b8';
+            const disc =
+              n?.kind === 'task' ? (n as { task: { discipline: Discipline } }).task.discipline : 'OTHER';
+            return DISC_COLOR[disc] || '#64748b';
+          }}
         />
         <Controls />
       </ReactFlow>
