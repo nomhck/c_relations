@@ -1,0 +1,309 @@
+/* 関係ハイライト: 近傍タスクのリング＋世代バッジ（§2.9・ユーザー要望） */
+.task-node.related {
+  box-shadow: 0 0 0 2px #6366f1, 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.task-node.related.origin {
+  box-shadow: 0 0 0 3px #4338ca, 0 4px 12px rgba(0, 0, 0, 0.22);
+}
+.lod-node.related {
+  outline: 2px solid #6366f1;
+  outline-offset: 1px;
+}
+.gen-badge {
+  position: absolute;
+  top: -8px;
+  left: -6px;
+  z-index: 2;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 14px;
+  padding: 0 4px;
+  border-radius: 7px;
+  color: #fff;
+  background: #6366f1;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.gen-badge.origin {
+  background: #4338ca;
+}
+.gen-badge.up {
+  background: #0ea5e9;
+}
+.gen-badge.down {
+  background: #f59e0b;
+}
+
+.toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  background: #0f172a;
+  color: #f1f5f9;
+  padding: 9px 13px;
+  border-radius: 8px;
+  max-width: 420px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  border-left: 4px solid #38bdf8;
+  font-size: 12px;
+}
+.toast.err {
+  border-left-color: #ef4444;
+}
+
+.task-node {
+  position: relative;
+  width: 186px;
+  min-height: 56px;
+  background: #fff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 7px 9px 7px 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.task-node.sel {
+  box-shadow: 0 0 0 2px #2563eb;
+}
+.task-node.dim {
+  opacity: 0.15;
+}
+.task-node.outside {
+  border-style: dashed;
+  opacity: 0.6;
+}
+.task-node.origin {
+  border-width: 2.5px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+}
+.task-node.st-IN_PROGRESS {
+  border-color: #3b82f6;
+}
+.task-node.st-DONE {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.task-node.st-ON_HOLD {
+  border-color: #eab308;
+}
+.disc-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 8px 0 0 8px;
+}
+.task-name {
+  font-weight: 600;
+  line-height: 1.2;
+  word-break: break-word;
+}
+.task-meta {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+}
+.task-name-input {
+  width: 100%;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-weight: 600;
+}
+.progress {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 3px;
+  height: 3px;
+  background: #e2e8f0;
+  border-radius: 2px;
+}
+.progress > i {
+  display: block;
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 2px;
+}
+.badge-done {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  color: #16a34a;
+  font-weight: 700;
+}
+.lod-node {
+  width: 40px;
+  height: 20px;
+  border-radius: 3px;
+}
+
+.ms-node {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  background: #fbbf24;
+  border: 1.5px solid #b45309;
+  transform: rotate(45deg);
+  border-radius: 3px;
+}
+.ms-node.sel {
+  box-shadow: 0 0 0 2px #2563eb;
+}
+.ms-wrap {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ms-label {
+  position: absolute;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* 集約カード（俯瞰の主役・§2.11）: ヘッダの色ブロックで工種主体、大きな件数で規模を一目化。 */
+.agg-card {
+  position: relative;
+  width: 172px;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 11px;
+  overflow: hidden;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.14);
+  cursor: pointer;
+}
+.agg-card.dim {
+  opacity: 0.22;
+}
+.agg-card.has-cp {
+  box-shadow: 0 0 0 2px #ef4444, 0 2px 7px rgba(15, 23, 42, 0.14);
+}
+.agg-card .agg-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  color: #fff;
+}
+.agg-card .agg-prefix {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+.agg-card .agg-count {
+  margin-left: auto;
+  font-weight: 800;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.26);
+  border-radius: 6px;
+  padding: 0 7px;
+}
+.agg-card .agg-ms {
+  font-size: 11px;
+}
+.agg-card .agg-cp {
+  font-size: 10px;
+  font-weight: 800;
+  background: #ef4444;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.agg-card .agg-body {
+  padding: 7px 10px 9px;
+}
+.agg-bars {
+  display: flex;
+  height: 7px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #e2e8f0;
+}
+.agg-bars > span {
+  display: block;
+}
+.agg-foot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+}
+.agg-prog {
+  flex: 1;
+  height: 5px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.agg-prog > i {
+  display: block;
+  height: 100%;
+  background: #475569;
+}
+.agg-prog-num {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.agg-card.continuation {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  background: #64748b;
+  border: 2px solid #fff;
+}
+.react-flow__handle:hover {
+  background: #2563eb;
+}
+.depitem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px dashed #eef2f7;
+}
+.depitem .name {
+  flex: 1;
+  cursor: pointer;
+  color: #1e40af;
+}
+.depitem .deptype {
+  font-size: 11px;
+  padding: 1px 2px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: #fff;
+}
+.depitem .deplag {
+  width: 44px;
+  font-size: 11px;
+  padding: 1px 3px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
+.depitem .name:hover {
+  text-decoration: underline;
+}
+.x {
+  cursor: pointer;
+  color: #94a3b8;
+}
+.x:hover {
+  color: #ef4444;
+}

@@ -1,0 +1,167 @@
+/* WBSツリーパネル */
+.wbs-tree {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 3px 0;
+}
+.wbs-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+}
+.wbs-tree-row.active {
+  background: #dbeafe;
+}
+.wbs-tree-tog {
+  width: 16px;
+  height: 18px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  padding: 0;
+}
+.wbs-tree-tog.empty {
+  display: inline-block;
+}
+.wbs-tree-label {
+  flex: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wbs-tree-label:hover {
+  color: #1e40af;
+}
+
+/* 保存ビュー */
+.sv-input {
+  flex: 1;
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+}
+.sv-list {
+  margin-top: 4px;
+}
+.sv-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px dashed #eef2f7;
+}
+.sv-item .name {
+  flex: 1;
+  cursor: pointer;
+  color: #1e40af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sv-item .name:hover {
+  text-decoration: underline;
+}
+
+/* 稼働カレンダー: 曜日トグル */
+.wd-row {
+  gap: 4px;
+}
+.wd-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.wd-btn.on {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.wd-btn.weekend:not(.on) {
+  color: #dc2626;
+}
+.wd-btn.weekend.on {
+  background: #059669;
+  border-color: #059669;
+}
+
+/* 依存追加コンボボックス（§2.9 第二経路・GUI接続） */
+.depadder {
+  position: relative;
+  margin-top: 3px;
+}
+.depadder-input {
+  width: 100%;
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+}
+.depadder-list {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 2px;
+  background: #fff;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+  max-height: 220px;
+  overflow: auto;
+}
+.depadder-item {
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.depadder-item:hover {
+  background: #eff6ff;
+}
+.depadder-item .mono {
+  color: var(--muted);
+}
+@media (prefers-color-scheme: dark) {
+  .depadder-list {
+    background: #0f172a;
+  }
+  .depadder-item:hover {
+    background: #1e293b;
+  }
+}
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+  font-size: 11px;
+}
+.legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.meta-line {
+  font-size: 11px;
+  color: var(--muted);
+}
+
