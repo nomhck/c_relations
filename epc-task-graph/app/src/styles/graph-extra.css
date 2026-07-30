@@ -27,23 +27,25 @@
 }
 .projectbar select {
   max-width: 180px;
-  padding: 3px 6px;
-  border-radius: 6px;
-  border: 1px solid #334155;
-  background: #1e293b;
-  color: var(--header-ink);
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  background: #fff;
+  color: var(--ink);
   font-size: 12px;
 }
 .completion {
   font-size: 12px;
-  color: #cbd5e1;
+  color: var(--muted);
   padding: 3px 8px;
   border-radius: 8px;
   border: 1px solid transparent;
-  transition: background 0.3s, color 0.3s;
+  transition:
+    background 0.3s,
+    color 0.3s;
 }
 .completion b {
-  color: #e2e8f0;
+  color: var(--ink);
 }
 .completion.flash {
   background: #dc2626;
@@ -65,29 +67,31 @@
 }
 .viewtabs {
   display: flex;
-  gap: 2px;
-  padding: 4px 8px 0;
-  background: #e2e8f0;
+  gap: 3px;
+  padding: 6px 12px 0;
+  background: #eef1f5;
   border-bottom: 1px solid var(--panel-border);
 }
 .viewtab {
-  background: #cbd5e1;
-  color: #334155;
-  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid transparent;
   border-bottom: none;
-  border-radius: 7px 7px 0 0;
-  padding: 5px 14px;
+  border-radius: 8px 8px 0 0;
+  padding: 6px 15px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
 }
 .viewtab:hover:not(:disabled) {
-  background: #dbeafe;
+  background: #fff;
+  color: var(--ink);
 }
 .viewtab.active {
   background: #fff;
-  color: #0f172a;
-  box-shadow: 0 -2px 0 #2563eb inset;
+  color: var(--ink);
+  border-color: var(--panel-border);
+  box-shadow: 0 -2px 0 var(--accent) inset;
 }
 .viewtab:disabled {
   opacity: 0.55;

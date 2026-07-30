@@ -7,11 +7,18 @@
   --disc-C: #059669;
   --disc-OTHER: #6b7280;
   --panel-bg: #ffffff;
-  --panel-border: #e2e8f0;
-  --ink: #0f172a;
-  --muted: #64748b;
-  --header-bg: #0f172a;
-  --header-ink: #e2e8f0;
+  --surface: #ffffff;
+  --panel-border: #e6e8ec;
+  --border-strong: #d3d8e0;
+  --ink: #111827;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --accent-weak: #eef4ff;
+  --radius: 8px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 6px 20px rgba(16, 24, 40, 0.12);
+  --header-bg: #ffffff;
+  --header-ink: #111827;
 }
 * {
   box-sizing: border-box;
@@ -27,7 +34,8 @@ body {
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
   color: var(--ink);
   font-size: 13px;
-  background: #f1f5f9;
+  background: #f4f6f9;
+  -webkit-font-smoothing: antialiased;
 }
 .app {
   display: flex;
@@ -40,29 +48,33 @@ body {
   color: var(--header-ink);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 6px;
+  padding: 8px 14px;
   flex-wrap: wrap;
+  border-bottom: 1px solid var(--panel-border);
+  box-shadow: var(--shadow-sm);
 }
 .header .proj {
   font-weight: 700;
   margin-right: 6px;
+  letter-spacing: -0.01em;
 }
 .header .spacer {
   flex: 1;
 }
 .breadcrumb {
-  background: #1e293b;
-  color: #cbd5e1;
-  padding: 3px 10px;
+  background: #fafbfc;
+  color: var(--muted);
+  padding: 4px 14px;
   font-size: 12px;
+  border-bottom: 1px solid var(--panel-border);
 }
 .breadcrumb .crumb {
   cursor: pointer;
 }
 .breadcrumb .crumb:hover {
   text-decoration: underline;
-  color: #fff;
+  color: var(--accent);
 }
 button,
 select,
@@ -70,40 +82,55 @@ input {
   font: inherit;
 }
 .btn {
-  background: #334155;
-  color: #e2e8f0;
-  border: 1px solid #475569;
-  border-radius: 6px;
-  padding: 4px 9px;
+  background: #fff;
+  color: #374151;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 5px 11px;
+  font-weight: 500;
   cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .btn:hover {
-  background: #475569;
+  background: #f3f4f6;
+  border-color: #c3cad4;
+}
+.btn:active {
+  background: #eceef1;
 }
 .btn:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 .btn.primary {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
+  box-shadow: var(--shadow-sm);
+}
+.btn.primary:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
 }
 .btn.on {
-  background: #0ea5e9;
-  border-color: #0ea5e9;
-  color: #fff;
+  background: var(--accent-weak);
+  border-color: #bfdbfe;
+  color: #1d4ed8;
 }
 .savebadge {
   font-size: 12px;
   padding: 3px 8px;
   border-radius: 10px;
+  font-weight: 600;
 }
 .savebadge.saved {
-  color: #86efac;
+  color: #059669;
 }
 .savebadge.dirty {
-  color: #fde047;
+  color: #b45309;
 }
 
 .body {
@@ -123,15 +150,27 @@ input {
   border-left: 1px solid var(--panel-border);
   width: 290px;
 }
+.panel {
+  padding: 12px;
+}
 .panel h3 {
-  margin: 12px 0 6px;
-  font-size: 12px;
+  margin: 16px 0 7px;
+  font-size: 11px;
   text-transform: uppercase;
-  color: var(--muted);
-  letter-spacing: 0.04em;
+  color: #9aa2af;
+  letter-spacing: 0.06em;
+  font-weight: 700;
 }
 .panel h3:first-child {
-  margin-top: 0;
+  margin-top: 2px;
+}
+/* パネル内フォーム要素の共通フォーカスリング（洗練の要） */
+.panel input:focus,
+.panel select:focus,
+.panel textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
 }
 .row {
   display: flex;
@@ -154,20 +193,32 @@ input {
 .field select,
 .field textarea {
   border: 1px solid var(--panel-border);
-  border-radius: 5px;
-  padding: 4px 6px;
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: #fff;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .chip {
   border: 1px solid var(--panel-border);
-  border-radius: 12px;
-  padding: 2px 8px;
+  border-radius: 14px;
+  padding: 3px 10px;
   cursor: pointer;
-  background: #f8fafc;
+  background: #fff;
+  color: #4b5563;
+  font-size: 12px;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+.chip:hover {
+  background: #f6f7f9;
 }
 .chip.on {
-  background: #dbeafe;
-  border-color: #93c5fd;
-  color: #1e3a8a;
+  background: var(--accent-weak);
+  border-color: #bfdbfe;
+  color: #1d4ed8;
 }
 .stat {
   font-size: 12px;
