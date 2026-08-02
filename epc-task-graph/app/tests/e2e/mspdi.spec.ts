@@ -15,10 +15,11 @@ test('MSPDI: 出力→ファイル取込 で往復（新プロジェクトとし
   });
   const beforeProjectId = await page.evaluate(() => (window as any).__APP.getState().project.id);
 
-  // MSPDI出力（ダウンロード）。
+  // MSPDI出力（データメニュー→ダウンロード）。
+  await page.getByTestId('data-menu').click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'MSPDI出力' }).click(),
+    page.getByRole('button', { name: /MSPDI出力/ }).click(),
   ]);
   const path = await download.path();
   expect(path).toBeTruthy();

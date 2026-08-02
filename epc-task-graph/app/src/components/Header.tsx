@@ -6,6 +6,57 @@ import { useApp, selectActiveCalendar } from '../store/store';
 import { selectCpm } from '../store/selectors';
 import { validateDoc, wbsPath, toMspdi, fromMspdi, emptyDoc } from '../domain';
 
+// データ入出力メニュー（ツールバー整理・§1.3）: JSON/MSPDI の出力・取込を1つのドロップダウンに集約。
+function DataMenu({
+  onJsonExport,
+  onJsonImport,
+  onMspdiExport,
+  onMspdiImport,
+}: {
+  onJsonExport: () => void;
+  onJsonImport: () => void;
+  onMspdiExport: () => void;
+  onMspdiImport: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+  const item = (label: string, fn: () => void) => (
+    <button
+      className="menu-item"
+      onClick={() => {
+        fn();
+        setOpen(false);
+      }}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="menu" ref={ref}>
+      <button className="btn" onClick={() => setOpen((o) => !o)} data-testid="data-menu" title="入出力">
+        データ ▾
+      </button>
+      {open ? (
+        <div className="menu-pop">
+          {item('JSON出力（.epcgraph.json）', onJsonExport)}
+          {item('JSON取込…', onJsonImport)}
+          <div className="menu-sep" />
+          {item('MSPDI出力（MS Project）', onMspdiExport)}
+          {item('MSPDI取込…', onMspdiImport)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // プロジェクト完了日サマリ（§9.2）。完了日が動いたらフラッシュして即時フィードバック。
 function CompletionSummary() {
   const tasks = useApp((s) => s.tasks);
@@ -177,12 +228,12 @@ export function Header() {
       <button className="btn" onClick={() => useApp.getState().generateDemo()}>
         4,000ノード生成
       </button>
-      <button className="btn" onClick={doExport}>
-        Export
-      </button>
-      <button className="btn" onClick={() => fileRef.current?.click()}>
-        Import
-      </button>
+      <DataMenu
+        onJsonExport={doExport}
+        onJsonImport={() => fileRef.current?.click()}
+        onMspdiExport={doExportMspdi}
+        onMspdiImport={() => mspdiRef.current?.click()}
+      />
       <input
         ref={fileRef}
         type="file"
@@ -193,17 +244,6 @@ export function Header() {
           e.target.value = '';
         }}
       />
-      <button className="btn" onClick={doExportMspdi} title="MS Project 形式(MSPDI XML)で出力">
-        MSPDI出力
-      </button>
-      <button
-        className="btn"
-        onClick={() => mspdiRef.current?.click()}
-        title="MS Project 形式(MSPDI XML)を取込"
-        data-testid="mspdi-import-btn"
-      >
-        MSPDI取込
-      </button>
       <input
         ref={mspdiRef}
         type="file"

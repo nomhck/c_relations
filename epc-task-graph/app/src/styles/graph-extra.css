@@ -27,12 +27,16 @@
 }
 .projectbar select {
   max-width: 180px;
-  padding: 4px 8px;
+  padding: 5px 9px;
   border-radius: 7px;
-  border: 1px solid var(--border-strong);
-  background: #fff;
+  border: 1px solid transparent;
+  background: var(--ctl-bg);
   color: var(--ink);
   font-size: 12px;
+  cursor: pointer;
+}
+.projectbar select:hover {
+  background: var(--ctl-hover);
 }
 .completion {
   font-size: 12px;
@@ -56,6 +60,44 @@
   color: #fff;
 }
 
+/* ヘッダのドロップダウンメニュー（データ入出力など） */
+.menu {
+  position: relative;
+  display: inline-block;
+}
+.menu-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  background: #fff;
+  border: 1px solid var(--panel-border);
+  border-radius: 11px;
+  box-shadow: var(--shadow-lg);
+  padding: 5px;
+  min-width: 224px;
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.menu-item:hover {
+  background: var(--ctl-bg);
+}
+.menu-sep {
+  height: 1px;
+  background: var(--panel-border);
+  margin: 5px 8px;
+}
+
 /* ============================================================================
    多ビュー（§12）: View Shell ＋ テーブルビュー
    ============================================================================ */
@@ -65,33 +107,38 @@
   display: flex;
   flex-direction: column;
 }
+/* iOS 風セグメントコントロール（左上に浮くピル） */
 .viewtabs {
-  display: flex;
-  gap: 3px;
-  padding: 6px 12px 0;
-  background: #eef1f5;
-  border-bottom: 1px solid var(--panel-border);
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin: 10px 0 10px 14px;
+  background: var(--ctl-bg);
+  border-radius: 9px;
+  align-self: flex-start;
 }
 .viewtab {
   background: transparent;
   color: var(--muted);
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  padding: 6px 15px;
+  border: none;
+  border-radius: 7px;
+  padding: 5px 16px;
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 500;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
 }
-.viewtab:hover:not(:disabled) {
-  background: #fff;
+.viewtab:hover:not(:disabled):not(.active) {
   color: var(--ink);
 }
 .viewtab.active {
   background: #fff;
   color: var(--ink);
-  border-color: var(--panel-border);
-  box-shadow: 0 -2px 0 var(--accent) inset;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.13);
+  font-weight: 600;
 }
 .viewtab:disabled {
   opacity: 0.55;
