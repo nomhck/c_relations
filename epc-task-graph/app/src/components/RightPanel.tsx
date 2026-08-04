@@ -1,7 +1,7 @@
 // 右パネル（§2.9）: 属性フォーム＋依存（先行/後続）＋WBS（親/兄弟）＋CPM欄（ES/EF/LS/LF/TF）。
 import { useMemo, useState } from 'react';
-import { useApp, selectActiveCalendar } from '../store/store';
-import { selectCpm } from '../store/selectors';
+import { useApp } from '../store/store';
+import { useCpm } from '../store/useCpm';
 import { DISCIPLINES, STATUSES, wbsPath, type Dependency, type Task } from '../domain';
 
 // 依存追加コンボボックス（§2.9 第二経路・ユーザー要望③）: 名前/WBSで検索し候補をクリックで接続。
@@ -61,9 +61,7 @@ export function RightPanel() {
   const task = useApp((s) => s.tasks.find((t) => t.id === s.selection.taskId));
   const deps = useApp((s) => s.dependencies);
   const tasks = useApp((s) => s.tasks);
-  const dataDate = useApp((s) => s.project.dataDate);
-  const calendar = useApp(selectActiveCalendar);
-  const cpm = useMemo(() => selectCpm(tasks, deps, dataDate, calendar), [tasks, deps, dataDate, calendar]);
+  const cpm = useCpm();
 
   if (!task)
     return (

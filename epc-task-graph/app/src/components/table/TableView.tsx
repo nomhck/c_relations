@@ -5,8 +5,9 @@
 // ============================================================================
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useApp, ALL_TABLE_COLUMNS, selectActiveCalendar } from '../../store/store';
-import { selectCpm, selectTableRows } from '../../store/selectors';
+import { useApp, ALL_TABLE_COLUMNS } from '../../store/store';
+import { selectTableRows } from '../../store/selectors';
+import { useCpm } from '../../store/useCpm';
 import type { TableColumnKey, TableRow, Task } from '../../domain';
 import { COLUMN_META, ROW_HEIGHT } from './cells';
 import { TableRowView, type RowHandlers } from './TableRowView';
@@ -17,18 +18,13 @@ export function TableView({ active }: { active: boolean }) {
   const tasks = useApp((s) => s.tasks);
   const dependencies = useApp((s) => s.dependencies);
   const viewSpec = useApp((s) => s.viewSpec);
-  const dataDate = useApp((s) => s.project.dataDate);
   const cpHighlight = useApp((s) => s.cpHighlight);
   const tableSort = useApp((s) => s.tableSort);
   const tableColumns = useApp((s) => s.tableColumns);
   const selection = useApp((s) => s.selection);
   const selectedIds = useApp((s) => s.selectedIds);
 
-  const calendar = useApp(selectActiveCalendar);
-  const cpm = useMemo(
-    () => selectCpm(tasks, dependencies, dataDate, calendar),
-    [tasks, dependencies, dataDate, calendar],
-  );
+  const cpm = useCpm();
   const augSpec = useMemo(
     () => ({ ...viewSpec, criticalTasks: cpm.criticalTasks, criticalEdges: cpm.criticalEdges, cpHighlight }),
     [viewSpec, cpm, cpHighlight],

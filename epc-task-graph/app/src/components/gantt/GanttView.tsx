@@ -11,8 +11,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { addCalendarDays, DISC_COLOR, type TableRow } from '../../domain';
-import { useApp, selectActiveCalendar } from '../../store/store';
-import { selectCpm, selectTableRows } from '../../store/selectors';
+import { useApp } from '../../store/store';
+import { selectTableRows } from '../../store/selectors';
+import { useCpm } from '../../store/useCpm';
 import { ROW_HEIGHT } from '../table/cells';
 
 const LEFT_W = 260; // 名前ペイン幅
@@ -48,11 +49,7 @@ export function GanttView({ active }: { active: boolean }) {
   const selection = useApp((s) => s.selection);
   const [dayWidth, setDayWidth] = useState(4);
 
-  const calendar = useApp(selectActiveCalendar);
-  const cpm = useMemo(
-    () => selectCpm(tasks, dependencies, dataDate, calendar),
-    [tasks, dependencies, dataDate, calendar],
-  );
+  const cpm = useCpm();
   const augSpec = useMemo(
     () => ({ ...viewSpec, criticalTasks: cpm.criticalTasks, criticalEdges: cpm.criticalEdges, cpHighlight }),
     [viewSpec, cpm, cpHighlight],

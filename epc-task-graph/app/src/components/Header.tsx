@@ -1,9 +1,10 @@
 // ヘッダ/ツールバー（§1.3）: プロジェクト切替・CP強調・完了日・作成・整列・Undo/Redo・
 //   デモ生成・Export/Import・保存状態。
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { useApp, selectActiveCalendar } from '../store/store';
 import { selectCpm } from '../store/selectors';
+import { useCpm } from '../store/useCpm';
 import { validateDoc, wbsPath, toMspdi, fromMspdi, emptyDoc } from '../domain';
 
 // データ入出力メニュー（ツールバー整理・§1.3）: JSON/MSPDI の出力・取込を1つのドロップダウンに集約。
@@ -59,11 +60,7 @@ function DataMenu({
 
 // プロジェクト完了日サマリ（§9.2）。完了日が動いたらフラッシュして即時フィードバック。
 function CompletionSummary() {
-  const tasks = useApp((s) => s.tasks);
-  const deps = useApp((s) => s.dependencies);
-  const dataDate = useApp((s) => s.project.dataDate);
-  const calendar = useApp(selectActiveCalendar);
-  const cpm = useMemo(() => selectCpm(tasks, deps, dataDate, calendar), [tasks, deps, dataDate, calendar]);
+  const cpm = useCpm();
   const endDate = cpm.projectEndDate;
   const [flash, setFlash] = useState(false);
   const prev = useRef(endDate);

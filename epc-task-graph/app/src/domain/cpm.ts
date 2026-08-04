@@ -186,28 +186,27 @@ export function computeCpm(
   //   （EF系は ES = 下限 − dur(s) に変換）。lag は負でリード。ES は 0（基準日）を下限に丸める。
   const es = new Map<string, number>();
   const ef = new Map<string, number>();
+  // 依存タイプ＋lag が後続 successor の ES に課す下限（§9.1）。前進計算と駆動エッジ判定で共用。
+  //   FS: ES_s ≥ EF_p+lag ／ SS: ES_s ≥ ES_p+lag ／ FF: EF_s≥EF_p+lag → ES へ稼働日換算 ／
+  //   SF: EF_s≥ES_p+lag → ES へ稼働日換算。es/ef/subWorkingDays をクロージャで参照。
+  const forwardReq = (type: Dependency['type'], p: string, lag: number, dSucc: number): number => {
+    switch (type) {
+      case 'SS':
+        return (es.get(p) ?? 0) + lag;
+      case 'FF':
+        return subWorkingDays((ef.get(p) ?? 0) + lag, dSucc);
+      case 'SF':
+        return subWorkingDays((es.get(p) ?? 0) + lag, dSucc);
+      case 'FS':
+      default:
+        return (ef.get(p) ?? 0) + lag;
+    }
+  };
   for (const id of order) {
     const d = dur(id);
     let start = 0;
     for (const dep of incoming.get(id) ?? []) {
-      const p = dep.predecessorId;
-      const lag = dep.lagDays || 0;
-      let req: number;
-      switch (dep.type) {
-        case 'SS':
-          req = (es.get(p) ?? 0) + lag;
-          break;
-        case 'FF':
-          req = subWorkingDays((ef.get(p) ?? 0) + lag, d); // EF_s≥EF_p+lag を ES_s 下限へ
-          break;
-        case 'SF':
-          req = subWorkingDays((es.get(p) ?? 0) + lag, d); // EF_s≥ES_p+lag を ES_s 下限へ
-          break;
-        case 'FS':
-        default:
-          req = (ef.get(p) ?? 0) + lag;
-          break;
-      }
+      const req = forwardReq(dep.type, dep.predecessorId, dep.lagDays || 0, d);
       if (req > start) start = req;
     }
     // SNET（Start No Earlier Than）: この日以降にしか開始できない → ES を下限で丸める。
@@ -298,26 +297,8 @@ export function computeCpm(
   const criticalEdges = new Set<string>();
   for (const d of deps) {
     if (!criticalTasks.has(d.predecessorId) || !criticalTasks.has(d.successorId)) continue;
-    const p = d.predecessorId;
     const s = d.successorId;
-    const lag = d.lagDays || 0;
-    const ds = dur(s);
-    let req: number;
-    switch (d.type) {
-      case 'SS':
-        req = (es.get(p) ?? 0) + lag;
-        break;
-      case 'FF':
-        req = subWorkingDays((ef.get(p) ?? 0) + lag, ds);
-        break;
-      case 'SF':
-        req = subWorkingDays((es.get(p) ?? 0) + lag, ds);
-        break;
-      case 'FS':
-      default:
-        req = (ef.get(p) ?? 0) + lag;
-        break;
-    }
+    const req = forwardReq(d.type, d.predecessorId, d.lagDays || 0, dur(s));
     const sEs = es.get(s);
     if (sEs != null && Math.abs(sEs - req) < 1e-9) criticalEdges.add(d.id);
   }

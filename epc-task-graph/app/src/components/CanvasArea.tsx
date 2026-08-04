@@ -29,8 +29,8 @@ import {
 } from '../domain';
 import { toRFNodes, toRFEdges, type RFNodeData } from '../adapters/reactflow';
 import { dagreLayout } from '../layout/layout';
-import { useApp, explainReject, nameOf, selectActiveCalendar } from '../store/store';
-import { selectCpm } from '../store/selectors';
+import { useApp, explainReject, nameOf } from '../store/store';
+import { useCpm } from '../store/useCpm';
 import { nodeTypes } from './nodes';
 
 // 俯瞰グリッド整列（§2.10/デザイン刷新）: 表示がすべて集約ノード（＝WBS群の俯瞰）のとき、
@@ -106,18 +106,13 @@ export function CanvasArea() {
   const tasks = useApp((s) => s.tasks);
   const dependencies = useApp((s) => s.dependencies);
   const viewSpec = useApp((s) => s.viewSpec);
-  const dataDate = useApp((s) => s.project.dataDate);
   const cpHighlight = useApp((s) => s.cpHighlight);
   const focus = viewSpec.focus;
   const rf = useReactFlow();
   const dragSrc = useRef<string | null>(null);
 
   // CPM 導出値（メモ化・参照が変わった時だけ再計算、§9.2）。
-  const calendar = useApp(selectActiveCalendar);
-  const cpm = useMemo(
-    () => selectCpm(tasks, dependencies, dataDate, calendar),
-    [tasks, dependencies, dataDate, calendar],
-  );
+  const cpm = useCpm();
   // 表示パイプラインへ CPM を注入した viewSpec（安定参照）。CP強調/CPのみ を統合。
   const augSpec = useMemo(
     () => ({ ...viewSpec, criticalTasks: cpm.criticalTasks, criticalEdges: cpm.criticalEdges, cpHighlight }),

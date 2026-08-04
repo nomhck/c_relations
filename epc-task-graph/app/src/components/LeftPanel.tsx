@@ -1,7 +1,7 @@
 // 左パネル（§2.8）: 私は誰・組込みビュー・フィルタ（DIM/ISOLATE）・展開レベル・稼働カレンダー・統計・凡例。
 import { useMemo, useState } from 'react';
 import { useApp, selectActiveCalendar } from '../store/store';
-import { selectCpm } from '../store/selectors';
+import { useCpm } from '../store/useCpm';
 import {
   deriveVisibleGraph,
   naturalWbsCompare,
@@ -209,14 +209,9 @@ export function LeftPanel() {
   const tasks = useApp((s) => s.tasks);
   const dependencies = useApp((s) => s.dependencies);
   const viewSpec = useApp((s) => s.viewSpec);
-  const dataDate = useApp((s) => s.project.dataDate);
   const cpHighlight = useApp((s) => s.cpHighlight);
 
-  const calendar = useApp(selectActiveCalendar);
-  const cpm = useMemo(
-    () => selectCpm(tasks, dependencies, dataDate, calendar),
-    [tasks, dependencies, dataDate, calendar],
-  );
+  const cpm = useCpm();
   const stats = useMemo(
     () =>
       deriveVisibleGraph(tasks, dependencies, {
