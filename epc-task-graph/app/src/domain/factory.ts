@@ -1,5 +1,10 @@
+// ============================================================================
+// ファクトリ（§5.2）: Task/Dependency/Doc の生成・既定値の一元管理。ここを通して作れば
+// スキーマ必須フィールド（rev/updatedBy/timestamp 等）が漏れなく埋まる。UI非依存の純関数。
+// ============================================================================
 import type { Calendar, Dependency, GraphDoc, Task } from './types';
 
+// 一意 ID。crypto.randomUUID があれば使い、無い環境（古い実行系）は乱数＋時刻で代替。
 export function newId(): string {
   return globalThis.crypto && crypto.randomUUID
     ? crypto.randomUUID()
@@ -10,15 +15,17 @@ export function nowISO(): string {
   return new Date().toISOString();
 }
 
-// 決定的乱数（seed.ts のデモ生成を再現可能にする）。
+// 決定的擬似乱数（mulberry32）。同じ seed からは常に同じ数列＝デモ生成やテストが再現可能。
+// 32bit の内部状態 a を毎回撹拌し、[0,1) の浮動小数を返す（Math.random の置換）。
+// ビット演算はオーバーフローを 32bit に丸めるためのイディオム（| 0 / >>> 0）。
 export function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
+  let a = seed >>> 0; // 状態を符号なし32bitに正規化
   return function () {
     a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    a = (a + 0x6d2b79f5) | 0; // 状態を定数で前進
+    let t = Math.imul(a ^ (a >>> 15), 1 | a); // 乗算＋シフトで雪崩効果（bit を混ぜる）
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296; // 2^32 で割って [0,1) へ
   };
 }
 

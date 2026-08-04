@@ -11,10 +11,13 @@ import type {
   TopoResult,
 } from './types';
 
+// 依存配列から隣接リスト（succ=後続方向 / pred=先行方向）を1パス O(E) で構築。
+// 以降のグラフ演算（循環検出・トポソート・近傍）は全てこの2マップを引き回して O(1) 参照する。
 export function buildAdjacency(deps: Dependency[]): Adjacency {
-  const succ = new Map<string, Set<string>>();
-  const pred = new Map<string, Set<string>>();
+  const succ = new Map<string, Set<string>>(); // predecessorId → { successorId, ... }
+  const pred = new Map<string, Set<string>>(); // successorId  → { predecessorId, ... }
   for (const d of deps) {
+    // 初出のノードは空 Set で用意してから辺を足す（Set なので同一辺は自然に重複排除）。
     if (!succ.has(d.predecessorId)) succ.set(d.predecessorId, new Set());
     if (!pred.has(d.successorId)) pred.set(d.successorId, new Set());
     succ.get(d.predecessorId)!.add(d.successorId);
@@ -26,12 +29,13 @@ export function buildAdjacency(deps: Dependency[]): Adjacency {
 // source の祖先集合（BFS）。ドラッグ開始時に1回計算し、判定は O(1)（§2.4）。
 export function ancestorsOf(sourceId: string, pred: Map<string, Set<string>>): Set<string> {
   const anc = new Set<string>();
-  const q: string[] = [sourceId];
+  const q: string[] = [sourceId]; // スタック（pop）で pred 方向へ深さ優先に遡る
   while (q.length) {
     const cur = q.pop()!;
     const ps = pred.get(cur);
     if (!ps) continue;
     for (const p of ps)
+      // 未訪問の先行だけを積む＝visited を兼ねる anc により各ノード1回で O(V+E)。
       if (!anc.has(p)) {
         anc.add(p);
         q.push(p);
@@ -46,19 +50,22 @@ export function findCyclePath(
   targetId: string,
   succ: Map<string, Set<string>>,
 ): string[] | null {
-  const prevOf = new Map<string, string>();
+  // target から succ 方向へ BFS し、辿った親を prevOf に記録（最短経路の復元用）。
+  // source に到達したら「source が target の後続でもある」＝この接続は循環、が確定する。
+  const prevOf = new Map<string, string>(); // 子 → 親（BFS木）
   const q: string[] = [targetId];
   const seen = new Set<string>([targetId]);
   while (q.length) {
-    const cur = q.shift()!;
+    const cur = q.shift()!; // FIFO＝最短ホップ順に展開
     if (cur === sourceId) {
+      // prevOf を source→…→target と逆に辿り直して経路を復元（表示用）。
       const path: string[] = [];
       let c: string | undefined = sourceId;
       while (c !== undefined) {
         path.push(c);
         c = prevOf.get(c);
       }
-      return path.reverse();
+      return path.reverse(); // target → … → source の順に整える
     }
     const ss = succ.get(cur);
     if (!ss) continue;
@@ -69,7 +76,7 @@ export function findCyclePath(
         q.push(s);
       }
   }
-  return null;
+  return null; // source へ到達せず＝循環なし
 }
 
 // 接続可否（自己ループ・重複・循環を拒否）。§2.4 の UI 予防と同一ロジック。
@@ -78,11 +85,15 @@ export function canConnect(
   targetId: string,
   deps: Dependency[],
 ): ConnectResult {
+  // ① 自己ループ拒否。
   if (sourceId === targetId) return { ok: false, reason: 'self', path: null };
+  // ② 既存の同一辺（重複）拒否。
   for (const d of deps) {
     if (d.predecessorId === sourceId && d.successorId === targetId)
       return { ok: false, reason: 'duplicate', path: null };
   }
+  // ③ 循環拒否: target が source の祖先なら、source→target を足すと閉路になる。
+  //    経路 path を添えて「なぜダメか」を UI に返す。
   const { succ, pred } = buildAdjacency(deps);
   const anc = ancestorsOf(sourceId, pred);
   if (anc.has(targetId))
@@ -92,14 +103,17 @@ export function canConnect(
 
 // Kahn のトポロジカルソート。order.length !== tasks.length なら循環あり（§5.2 検証⑤）。
 export function topoSort(tasks: Task[], deps: Dependency[]): TopoResult {
+  // 各ノードの入次数（先行数）を数える。
   const indeg = new Map<string, number>();
   for (const t of tasks) indeg.set(t.id, 0);
   const { succ } = buildAdjacency(deps);
   for (const d of deps)
     if (indeg.has(d.successorId)) indeg.set(d.successorId, indeg.get(d.successorId)! + 1);
+  // 入次数0（先行なし）を初期キューへ。
   const q: string[] = [];
   for (const [id, dg] of indeg) if (dg === 0) q.push(id);
   const order: string[] = [];
+  // キューから取り出す度に後続の入次数を1減らし、0になったら順序が確定＝キューへ。
   while (q.length) {
     const cur = q.shift()!;
     order.push(cur);
@@ -110,6 +124,7 @@ export function topoSort(tasks: Task[], deps: Dependency[]): TopoResult {
       if (indeg.get(s) === 0) q.push(s);
     }
   }
+  // 全ノードを並べ切れない＝入次数が0にならない環が残った＝循環あり（§5.2 検証⑤）。
   const ok = order.length === tasks.length;
   return { ok, order, hasCycle: !ok };
 }
@@ -122,10 +137,11 @@ export function neighborhood(
   up: number,
   down: number,
 ): Neighborhood {
-  const set = new Set<string>([originId]);
-  const directPred = new Set<string>();
-  const directSucc = new Set<string>();
-  const gen = new Map<string, number>([[originId, 0]]);
+  const set = new Set<string>([originId]); // 近傍に含む全ノード（起点を含む）
+  const directPred = new Set<string>(); // 起点の直接先行（1つ上）
+  const directSucc = new Set<string>(); // 起点の直接後続（1つ下）
+  const gen = new Map<string, number>([[originId, 0]]); // 起点からの世代（0=起点）
+  // 上流探索: 起点から pred 方向へ up 階層ぶん BFS（frontier=各階層の集合）。
   let frontier: string[] = [originId];
   for (let lvl = 0; lvl < up; lvl++) {
     const next: string[] = [];
@@ -133,16 +149,17 @@ export function neighborhood(
       const ps = pred.get(cur);
       if (!ps) continue;
       for (const p of ps) {
-        if (lvl === 0) directPred.add(p);
+        if (lvl === 0) directPred.add(p); // 最初の階層＝直接先行
         if (!set.has(p)) {
           set.add(p);
-          gen.set(p, -(lvl + 1)); // 上流は負の世代
+          gen.set(p, -(lvl + 1)); // 上流は負の世代（-1, -2, …）
           next.push(p);
         }
       }
     }
-    frontier = next;
+    frontier = next; // 次の階層へ
   }
+  // 下流探索: 同様に succ 方向へ down 階層ぶん BFS（frontier を起点にリセット）。
   frontier = [originId];
   for (let lvl = 0; lvl < down; lvl++) {
     const next: string[] = [];
