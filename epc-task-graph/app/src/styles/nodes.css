@@ -178,24 +178,40 @@
   position: relative;
   width: 172px;
   background: #fff;
-  border: 1px solid #cbd5e1;
-  border-radius: 11px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.14);
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.06),
+    0 6px 16px rgba(16, 24, 40, 0.1);
   cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.agg-card:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 2px 4px rgba(16, 24, 40, 0.08),
+    0 12px 24px rgba(16, 24, 40, 0.14);
 }
 .agg-card.dim {
   opacity: 0.22;
 }
 .agg-card.has-cp {
-  box-shadow: 0 0 0 2px #ef4444, 0 2px 7px rgba(15, 23, 42, 0.14);
+  box-shadow:
+    0 0 0 1.5px #ef4444,
+    0 6px 16px rgba(239, 68, 68, 0.22);
 }
 .agg-card .agg-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  padding: 6px 11px;
   color: #fff;
+  /* ベタ塗り→微グラデ＋上端ハイライトで立体感 */
+  background-image: linear-gradient(rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 .agg-card .agg-prefix {
   font-weight: 800;
@@ -251,6 +267,7 @@
   display: block;
   height: 100%;
   background: #475569;
+  border-radius: 3px;
 }
 .agg-prog-num {
   font-size: 11px;
