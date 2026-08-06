@@ -4,12 +4,78 @@
 //   ビューポート/スクロール位置/選択が保たれる）。復帰時に fitView は呼ばない。
 // 選択・フィルタ・折り畳みはストア共有状態なので「同期は基本なにもしない」で成立する。
 // ============================================================================
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../store/store';
 import type { ActiveView } from '../domain';
 import { CanvasArea } from './CanvasArea';
 import { TableView } from './table/TableView';
 import { GanttView } from './gantt/GanttView';
+
+// 操作マニュアル（タブ横ヘルプ）。実運用の「まず絞る→それから見る」ワークフローと主要操作を
+// その場で確認できる。4,000件を一度に見るのは非現実的なので、絞り込み導線を最上段に置く。
+function HelpButton() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', h);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', h);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+  return (
+    <div className="help" ref={ref}>
+      <button
+        className="help-btn"
+        data-testid="help-btn"
+        title="操作マニュアル"
+        onClick={() => setOpen((o) => !o)}
+      >
+        ？ 使い方
+      </button>
+      {open ? (
+        <div className="help-pop" data-testid="help-pop">
+          <h4>まず絞る → それから見る</h4>
+          <p className="help-lead">
+            4,000件を一度に見るのは非現実的です。<b>担当・工区・CPで絞ってから</b>グラフ／テーブル
+            ／ガントで確認するのが実運用の基本です。
+          </p>
+          <div className="help-sec">絞り込み（左パネル）</div>
+          <ul>
+            <li><b>自分のタスク</b> … 自分の部署だけ抽出</li>
+            <li><b>CPのみ</b> … 遅れると全体が遅れる背骨だけ</li>
+            <li><b>WBSツリー</b> … 工区（枝）をクリックでその範囲だけ</li>
+            <li><b>保存ビュー ★</b> … よく使う絞り込みを起動時に自動適用</li>
+          </ul>
+          <div className="help-sec">3つのビュー</div>
+          <ul>
+            <li><b>グラフ（G）</b> … 依存関係を編集。ハンドルからドラッグで接続</li>
+            <li><b>テーブル（T）</b> … 一覧・並べ替え・一括編集</li>
+            <li><b>ガント（Y）</b> … 時間軸。バー右端ドラッグで工期変更</li>
+          </ul>
+          <div className="help-sec">主なキー操作</div>
+          <ul className="help-keys">
+            <li><kbd>G</kbd>/<kbd>T</kbd>/<kbd>Y</kbd> ビュー切替</li>
+            <li><kbd>⌘/Ctrl</kbd>+<kbd>K</kbd> 検索してジャンプ</li>
+            <li><kbd>H</kbd> 選択タスクの関係先をハイライト（世代指定可）</li>
+            <li><kbd>N</kbd> 新規タスク ／ <kbd>Tab</kbd> 後続を作成</li>
+            <li><kbd>Delete</kbd> 削除 ／ <kbd>⌘/Ctrl</kbd>+<kbd>Z</kbd> 取り消し</li>
+          </ul>
+          <div className="help-sec">データ</div>
+          <ul>
+            <li><b>データ ▾</b> … JSON / MS Project(MSPDI) の出力・取込</li>
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function Tab({
   view,
@@ -85,10 +151,13 @@ export function ViewShell() {
 
   return (
     <div className="viewshell">
-      <div className="viewtabs">
-        <Tab view="graph" label="グラフ" hint="G" />
-        <Tab view="table" label="テーブル" hint="T" />
-        <Tab view="gantt" label="ガント" hint="Y" />
+      <div className="viewtabs-bar">
+        <div className="viewtabs">
+          <Tab view="graph" label="グラフ" hint="G" />
+          <Tab view="table" label="テーブル" hint="T" />
+          <Tab view="gantt" label="ガント" hint="Y" />
+        </div>
+        <HelpButton />
       </div>
       <div className="viewstack">
         <div className="view-pane" style={{ display: activeView === 'graph' ? 'flex' : 'none' }}>

@@ -44,3 +44,42 @@ test('保存ビュー: フィルタ/ソートを保存→クリア→適用で�
   await page.locator('.sv-item', { hasText: 'Eのみ' }).locator('.x').click();
   await expect(page.getByTestId('saveview-list')).toHaveCount(0);
 });
+
+// §2.8 実用化: 保存ビューを★で「既定」に指定→リロードで自動適用（毎回"自分の入口"で開く）。
+test('既定ビュー: ★指定→リロードで起動時に自動適用される', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => !!(window as any).__APP);
+
+  // 工種P + ISOLATE で保存し、★（既定）に指定。
+  await page.evaluate(() => {
+    const app = (window as any).__APP.getState();
+    app.setDisplayMode('ISOLATE');
+    app.setFilter({ disciplines: ['P'] });
+  });
+  await page.getByTestId('saveview-name').fill('調達だけ');
+  await page.getByTestId('saveview-btn').click();
+  await page.locator('.sv-item', { hasText: '調達だけ' }).locator('.sv-star').click();
+  // localStorage に既定ビューIDが入る。
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('epc-app-default-view')))
+    .not.toBeNull();
+  // 保存ビュー本体が Dexie に書かれる（デバウンス500ms）のを待つ＝リロード後も残る前提。
+  await expect(page.getByTestId('savebadge')).toHaveText(/保存済み/);
+
+  // フィルタを解除してからリロード → 起動時に既定ビューが自動適用され P/ISOLATE が復元。
+  await page.evaluate(() => {
+    const app = (window as any).__APP.getState();
+    app.clearFilter();
+    app.setDisplayMode('DIM');
+  });
+  await page.reload();
+  await page.waitForFunction(() => !!(window as any).__APP);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const s = (window as any).__APP.getState();
+        return { disc: s.viewSpec.filter.disciplines, mode: s.viewSpec.displayMode };
+      }),
+    )
+    .toEqual({ disc: ['P'], mode: 'ISOLATE' });
+});

@@ -58,6 +58,19 @@
   padding: 3px 0;
   border-bottom: 1px dashed #eef2f7;
 }
+.sv-item .sv-star {
+  cursor: pointer;
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.sv-item .sv-star:hover {
+  color: #f59e0b;
+}
+.sv-item .sv-star.on {
+  color: #f59e0b;
+}
 .sv-item .name {
   flex: 1;
   cursor: pointer;

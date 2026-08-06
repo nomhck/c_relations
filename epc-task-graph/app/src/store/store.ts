@@ -51,6 +51,7 @@ enableMapSet();
 const LS_ME = 'epc-app-me';
 const LS_ACTIVE_VIEW = 'epc-app-active-view';
 const LS_TABLE_COLUMNS = 'epc-app-table-columns';
+const LS_DEFAULT_VIEW = 'epc-app-default-view'; // 起動時に自動適用する保存ビューID（実用化の入口）
 
 // 表示列の正準順（§12.3.2）。TableView はこの順で、tableColumns に含まれる列だけを描画する。
 export const ALL_TABLE_COLUMNS: TableColumnKey[] = [
@@ -143,6 +144,7 @@ export interface AppState {
   activeView: ActiveView; // localStorage 記憶
   tableSort: TableSort[]; // 多重ソート（PR-T1は単一キー運用）。既定 []＝WBS自然順
   tableColumns: TableColumnKey[]; // 表示列。localStorage 記憶
+  defaultViewId: string | null; // 起動時に自動適用する保存ビューID（localStorage 記憶）
 
   // ---- アクション ----
   setRunner: (name: keyof Runners, fn: () => void) => void;
@@ -187,6 +189,7 @@ export interface AppState {
   saveCurrentView: (name: string) => void; // 現在のフィルタ/表示/折り畳み/テーブル状態を保存
   applyView: (id: string) => void; // 保存ビューを適用
   deleteView: (id: string) => void;
+  setDefaultView: (id: string | null) => void; // 起動時に自動適用する既定ビューを指定/解除
 
   // ---- 多ビュー（§12.2）: 新設アクション ----
   setActiveView: (v: ActiveView) => void;
@@ -288,6 +291,12 @@ export async function bootstrapStore(): Promise<void> {
     /* Dexie 不可環境では starter のまま動作 */
   } finally {
     hydrating = false;
+    // 既定ビューが指定されていて現プロジェクトに実在すれば、起動直後に自動適用（実用化の入口）。
+    // loadDoc が viewSpec を既定へ戻した後に適用するので順序が正しい。
+    const st = useApp.getState();
+    if (st.defaultViewId && st.savedViews.some((v) => v.id === st.defaultViewId)) {
+      st.applyView(st.defaultViewId);
+    }
     // ハイドレーション中に行われた編集（保存が抑止されていた分）を吐き出す。
     const d = useApp.getState().dirty;
     if (d.tasks.size || d.deps.size || d.deletedTasks.size || d.deletedDeps.size) scheduleSave();
@@ -391,6 +400,13 @@ export const useApp = create<AppState>()(
       activeView: initialActiveView(),
       tableSort: [],
       tableColumns: initialTableColumns(),
+      defaultViewId: (() => {
+        try {
+          return localStorage.getItem(LS_DEFAULT_VIEW) || null;
+        } catch {
+          return null;
+        }
+      })(),
 
       setRunner: (name, fn) =>
         set((s) => {
@@ -776,8 +792,27 @@ export const useApp = create<AppState>()(
       deleteView: (id) => {
         set((s) => {
           s.savedViews = s.savedViews.filter((v) => v.id !== id);
+          if (s.defaultViewId === id) s.defaultViewId = null; // 既定だったビューを消したら既定も解除
         });
+        try {
+          if (get().defaultViewId === null) localStorage.removeItem(LS_DEFAULT_VIEW);
+        } catch {
+          /* ignore */
+        }
         scheduleSave();
+      },
+      // 既定ビュー: 同じIDを再指定したら解除（トグル）。起動時に bootstrapStore が自動適用する。
+      setDefaultView: (id) => {
+        set((s) => {
+          s.defaultViewId = s.defaultViewId === id ? null : id;
+        });
+        try {
+          const cur = get().defaultViewId;
+          if (cur) localStorage.setItem(LS_DEFAULT_VIEW, cur);
+          else localStorage.removeItem(LS_DEFAULT_VIEW);
+        } catch {
+          /* ignore */
+        }
       },
 
       // ---- 多ビュー（§12.2）: 表示状態アクション（Undo対象外・Dexie非永続）----

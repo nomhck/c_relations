@@ -105,6 +105,7 @@ function WbsTreePanel() {
 // 保存ビュー（§2.8/§12.3.8 PR-T2④）: 現在のフィルタ/表示/折り畳み/テーブル状態を名前付きで保存・適用。
 function SavedViews() {
   const views = useApp((s) => s.savedViews);
+  const defaultViewId = useApp((s) => s.defaultViewId);
   const [name, setName] = useState('');
   const save = () => {
     useApp.getState().saveCurrentView(name);
@@ -132,6 +133,14 @@ function SavedViews() {
         <div className="sv-list" data-testid="saveview-list">
           {views.map((v) => (
             <div className="sv-item" key={v.id}>
+              {/* ★＝起動時に自動適用する既定ビュー（実用化: 毎回"自分の入口"で開く） */}
+              <span
+                className={'sv-star' + (defaultViewId === v.id ? ' on' : '')}
+                title={defaultViewId === v.id ? '既定ビュー（起動時に自動適用）' : '既定ビューにする（起動時に自動適用）'}
+                onClick={() => useApp.getState().setDefaultView(v.id)}
+              >
+                {defaultViewId === v.id ? '★' : '☆'}
+              </span>
               <span
                 className="name"
                 title="このビューを適用"
@@ -148,6 +157,11 @@ function SavedViews() {
       ) : (
         <div className="stat">— まだありません</div>
       )}
+      {views.length ? (
+        <div className="stat" style={{ marginTop: 3 }}>
+          ★で「起動時に自動適用」＝毎回この絞り込みで開く
+        </div>
+      ) : null}
     </>
   );
 }

@@ -70,8 +70,11 @@
   cursor: pointer;
   transition: background 0.1s ease;
 }
+.gantt-name.odd {
+  background: rgba(15, 23, 42, 0.028); /* 左ペインも同じゼブラで左右の行が揃う */
+}
 .gantt-name:hover {
-  background: rgba(0, 113, 227, 0.04);
+  background: rgba(0, 113, 227, 0.06);
 }
 .gantt-name .gantt-tname {
   overflow: hidden;
@@ -125,6 +128,7 @@
   bottom: 0;
   width: 2px;
   background: #ef4444;
+  box-shadow: 0 0 5px rgba(239, 68, 68, 0.6); /* 基準日ラインを発光させて見つけやすく */
   z-index: 4;
 }
 .gantt-body {
@@ -145,23 +149,30 @@
   border-bottom: 1px solid rgba(0, 0, 0, 0.035);
   transition: background 0.1s ease;
 }
+.gantt-track.odd {
+  background: rgba(15, 23, 42, 0.028); /* ゼブラ縞: 奇数行を薄く敷く */
+}
 .gantt-track:hover {
-  background: rgba(0, 113, 227, 0.04);
+  background: rgba(0, 113, 227, 0.06);
+}
+.gantt-track.sel {
+  background: rgba(0, 113, 227, 0.09);
 }
 .gantt-track.sel {
   background: rgba(59, 130, 246, 0.08);
 }
 .gantt-bar {
   position: absolute;
-  top: 7px;
-  height: 16px;
-  border-radius: 8px; /* 錠剤形（高さの約半分） */
+  top: 6px;
+  height: 18px; /* 高めにして視認性UP */
+  min-width: 6px; /* 短工期でも点にならず見える下限 */
+  border-radius: 9px; /* 錠剤形（高さの約半分） */
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    0 1px 2px rgba(0, 0, 0, 0.12),
-    0 2px 5px rgba(0, 0, 0, 0.08);
-  /* ベタ塗り→ごく僅かな縦グラデで立体感（背景色に白/黒を薄く重ねる） */
-  background-image: linear-gradient(rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.06));
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 0 0.5px rgba(0, 0, 0, 0.12), /* 白背景でも輪郭が立つ細い縁 */
+    0 1px 3px rgba(0, 0, 0, 0.18);
+  /* ベタ塗り→縦グラデで立体感（上を明るく下を暗く） */
+  background-image: linear-gradient(rgba(255, 255, 255, 0.22), rgba(0, 0, 0, 0.1));
   cursor: pointer;
   transition: filter 0.12s ease;
 }

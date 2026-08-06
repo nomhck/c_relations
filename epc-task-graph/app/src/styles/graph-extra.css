@@ -107,15 +107,102 @@
   display: flex;
   flex-direction: column;
 }
+/* タブ列とヘルプを横並びにする帯 */
+.viewtabs-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 10px 14px;
+}
 /* iOS 風セグメントコントロール（左上に浮くピル） */
 .viewtabs {
   display: inline-flex;
   gap: 2px;
   padding: 3px;
-  margin: 10px 0 10px 14px;
   background: var(--ctl-bg);
   border-radius: 9px;
-  align-self: flex-start;
+}
+/* 操作マニュアル（ヘルプ） */
+.help {
+  position: relative;
+}
+.help-btn {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.help-btn:hover {
+  background: var(--ctl-bg);
+  color: var(--ink);
+}
+.help-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: 360px;
+  max-height: 72vh;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  padding: 16px 18px;
+}
+.help-pop h4 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+.help-pop .help-lead {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.help-pop .help-sec {
+  margin: 12px 0 5px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  font-weight: 700;
+}
+.help-pop ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+.help-pop ul.help-keys {
+  list-style: none;
+  padding-left: 2px;
+}
+.help-pop kbd {
+  display: inline-block;
+  min-width: 16px;
+  text-align: center;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--ctl-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  .help-pop {
+    background: #0f172a;
+  }
 }
 .viewtab {
   background: transparent;

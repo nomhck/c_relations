@@ -146,7 +146,12 @@ export function GanttView({ active }: { active: boolean }) {
                 return (
                   <div
                     key={r.id}
-                    className={'gantt-name' + (isWbs ? ' wbs' : '') + (r.id === selId ? ' sel' : '')}
+                    className={
+                      'gantt-name' +
+                      (isWbs ? ' wbs' : '') +
+                      (r.id === selId ? ' sel' : '') +
+                      (vi.index % 2 === 1 ? ' odd' : '') // ゼブラ縞（行を横に追いやすく）
+                    }
                     style={{ transform: `translateY(${vi.start}px)`, height: ROW_HEIGHT }}
                     onClick={() => select(r)}
                   >
@@ -208,6 +213,7 @@ export function GanttView({ active }: { active: boolean }) {
                   dayWidth={dayWidth}
                   top={vi.start}
                   selected={r.id === selId}
+                  odd={vi.index % 2 === 1}
                   onSelect={() => select(r)}
                 />
               );
@@ -226,6 +232,7 @@ function GanttBar({
   dayWidth,
   top,
   selected,
+  odd,
   onSelect,
 }: {
   row: TableRow;
@@ -234,6 +241,7 @@ function GanttBar({
   dayWidth: number;
   top: number;
   selected: boolean;
+  odd: boolean;
   onSelect: () => void;
 }) {
   // バー右端ドラッグで所要日数を編集（§9.3「閲覧＋duration変更」）。プレビュー中は暦日近似で伸縮し、
@@ -259,7 +267,7 @@ function GanttBar({
 
   const rowEl = (children: React.ReactNode) => (
     <div
-      className={'gantt-track' + (selected ? ' sel' : '')}
+      className={'gantt-track' + (selected ? ' sel' : '') + (odd ? ' odd' : '')}
       style={{ transform: `translateY(${top}px)`, height: ROW_HEIGHT }}
       data-id={row.id}
       onClick={onSelect}
