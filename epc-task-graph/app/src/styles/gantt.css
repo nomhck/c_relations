@@ -141,6 +141,23 @@
   width: 1px;
   background: rgba(0, 0, 0, 0.04);
 }
+/* 依存矢印レイヤ（バーの下・pointer透過） */
+.gantt-deps {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 0; /* グリッドの上・バー(トラック)の下。DOM順で tracks が上に来る */
+}
+.gantt-dep-line {
+  fill: none;
+  stroke: #94a3b8;
+  stroke-width: 1.3;
+}
+.gantt-dep-line.crit {
+  stroke: #ef4444;
+  stroke-width: 1.6;
+}
 .gantt-track {
   position: absolute;
   top: 0;

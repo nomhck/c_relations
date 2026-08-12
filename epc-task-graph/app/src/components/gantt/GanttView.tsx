@@ -48,6 +48,7 @@ export function GanttView({ active }: { active: boolean }) {
   const tableSort = useApp((s) => s.tableSort);
   const selection = useApp((s) => s.selection);
   const [dayWidth, setDayWidth] = useState(4);
+  const [showDeps, setShowDeps] = useState(true); // 依存矢印の表示トグル
 
   const cpm = useCpm();
   const augSpec = useMemo(
@@ -113,6 +114,35 @@ export function GanttView({ active }: { active: boolean }) {
   const virtualItems = virtualizer.getVirtualItems();
   const totalSize = virtualizer.getTotalSize();
 
+  // 依存矢印: 仮想化された「表示中の行ペア」だけを結ぶ（4,000×6,000でも描画は数十本で軽量）。
+  // 折り畳み内の非表示タスクは visTop に載らない＝矢印も出ない（表示と整合）。
+  const arrows = useMemo(() => {
+    if (!showDeps) return [];
+    const visTop = new Map<string, number>(); // taskId → 行の上端Y（表示中のタスク行のみ）
+    for (const vi of virtualItems) {
+      const r = rows[vi.index];
+      if (r && r.kind === 'task') visTop.set(r.id, vi.start);
+    }
+    const out: { d: string; crit: boolean }[] = [];
+    for (const dep of dependencies) {
+      const pt = visTop.get(dep.predecessorId);
+      const st = visTop.get(dep.successorId);
+      if (pt == null || st == null) continue; // 両端が見えている時だけ描く
+      const pc = cpm.byTask.get(dep.predecessorId);
+      const sc = cpm.byTask.get(dep.successorId);
+      if (!pc || !sc) continue;
+      // 先行バー終端 → 後続バー始端 をエルボー（直角）で結ぶ。矢印は後続の開始側に付く。
+      const x1 = pc.ef * dayWidth;
+      const y1 = pt + ROW_HEIGHT / 2;
+      const x2 = sc.es * dayWidth;
+      const y2 = st + ROW_HEIGHT / 2;
+      const ex = Math.max(x1 + 7, x2 - 7); // 一旦右へ出っ張ってから縦移動（重なり回避）
+      const path = `M ${x1} ${y1} L ${ex} ${y1} L ${ex} ${y2} L ${x2} ${y2}`;
+      out.push({ d: path, crit: cpm.criticalEdges.has(dep.id) });
+    }
+    return out;
+  }, [showDeps, virtualItems, rows, dependencies, cpm, dayWidth]);
+
   return (
     <div className="ganttview">
       <div className="gantt-toolbar">
@@ -120,6 +150,14 @@ export function GanttView({ active }: { active: boolean }) {
           ガント：<b>{rows.length}</b> 行 · 期間 <b>{maxOff}</b> 日（基準日 {dataDate}）
         </span>
         <span className="spacer" />
+        <button
+          className={'btn' + (showDeps ? ' on' : '')}
+          title="依存矢印の表示切替"
+          data-testid="gantt-deps-toggle"
+          onClick={() => setShowDeps((v) => !v)}
+        >
+          依存線
+        </button>
         <span className="gantt-zoom">
           日幅
           <button className="btn" title="縮小" onClick={() => setDayWidth((w) => Math.max(1.5, w - 1))}>
@@ -201,6 +239,27 @@ export function GanttView({ active }: { active: boolean }) {
             {ticks.map((t) => (
               <div key={t.off} className="gantt-grid" style={{ left: t.off * dayWidth }} />
             ))}
+            {/* 依存矢印レイヤ（バーの下・表示中ペアのみ） */}
+            {arrows.length ? (
+              <svg className="gantt-deps" width={timelineW} height={totalSize}>
+                <defs>
+                  <marker id="gv-arrow" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+                    <path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8" />
+                  </marker>
+                  <marker id="gv-arrow-c" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+                    <path d="M0,0 L6,3 L0,6 Z" fill="#ef4444" />
+                  </marker>
+                </defs>
+                {arrows.map((a, i) => (
+                  <path
+                    key={i}
+                    d={a.d}
+                    className={'gantt-dep-line' + (a.crit ? ' crit' : '')}
+                    markerEnd={`url(#${a.crit ? 'gv-arrow-c' : 'gv-arrow'})`}
+                  />
+                ))}
+              </svg>
+            ) : null}
             {virtualItems.map((vi) => {
               const r = rows[vi.index];
               if (!r) return null;
