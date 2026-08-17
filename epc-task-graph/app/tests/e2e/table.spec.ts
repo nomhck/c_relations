@@ -48,7 +48,7 @@ test('テーブル: タブ切替→4000→仮想化→フィルタ→選択同�
 
   // ---- 4,000ノード生成 → テーブルへ反映 ----
   const t0 = Date.now();
-  await page.getByRole('button', { name: '4,000ノード生成' }).click();
+  await page.evaluate(() => (window as any).__APP.getState().generateDemo());
   await expect.poll(async () => await tasksLen(page)).toBe(4000);
   // 全WBS展開（4,000タスク行＋WBS行で仮想化を実スケール検証。既定は Lv2 集約）。
   await page.evaluate(() => (window as any).__APP.getState().setExpandLevel(9));
@@ -126,7 +126,7 @@ test('テーブル: g/t切替・Tab後続作成・WBS日付集計', async ({ pag
   await expect.poll(async () => await activeView(page)).toBe('table');
 
   // ---- デモ生成（CPMが効く依存つき）----
-  await page.getByRole('button', { name: '4,000ノード生成' }).click();
+  await page.evaluate(() => (window as any).__APP.getState().generateDemo());
   await expect.poll(async () => await tasksLen(page)).toBe(4000);
   await page.evaluate(() => (window as any).__APP.getState().setExpandLevel(9));
   await expect(page.locator('.trow:not(.trow-wbs)').first()).toBeVisible();

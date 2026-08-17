@@ -12,7 +12,7 @@ test('ガント: Yショートカット→軸/バー描画→CPのみで全バ�
   await page.waitForFunction(() => !!(window as any).__APP);
 
   // 4,000デモ生成
-  await page.getByRole('button', { name: '4,000ノード生成' }).click();
+  await page.evaluate(() => (window as any).__APP.getState().generateDemo());
   await expect.poll(async () => await tasksLen(page)).toBe(4000);
   await page.evaluate(() => (window as any).__APP.getState().setExpandLevel(9));
 

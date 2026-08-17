@@ -1,3 +1,31 @@
+/* 詳細設定トグル（大胆に隠す） */
+.details-toggle {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--panel-border);
+  margin-top: 14px;
+  padding: 12px 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  cursor: pointer;
+}
+.details-toggle:hover {
+  color: var(--ink);
+}
+.details-body {
+  animation: detailsIn 0.15s ease;
+}
+@keyframes detailsIn {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
 /* WBSツリーパネル */
 .wbs-tree {
   max-height: 220px;

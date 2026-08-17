@@ -66,7 +66,7 @@ test('4,000デモ生成→ISOLATEフィルタで可視数が大幅に減る（§
   await page.goto('/');
   await page.waitForFunction(() => !!(window as any).__APP);
 
-  await page.getByRole('button', { name: '4,000ノード生成' }).click();
+  await page.evaluate(() => (window as any).__APP.getState().generateDemo());
   await expect.poll(async () => (await counts(page)).tasks).toBe(4000);
 
   // デザイン刷新の回帰ガード: 俯瞰（Lv2集約30件）が灰色LOD箱でなく判読可能な
@@ -87,6 +87,8 @@ test('4,000デモ生成→ISOLATEフィルタで可視数が大幅に減る（§
   });
   expect(visible).toBeTruthy();
 
+  // 統計は「詳細設定」に折り畳まれているため開く。
+  await page.getByTestId('details-toggle').click();
   // 統計パネルの可視数が数十〜数百（4,000 の半分未満）へ
   await expect
     .poll(async () => {
@@ -121,6 +123,8 @@ test('CPのみ表示で背骨チェーンが抽出される（§9.2 / PR4）', a
 
   // 「CPのみ」ビュー適用 → 背骨（A,B,D）の3ノードだけが表示される
   await page.getByRole('button', { name: 'CPのみ' }).click();
+  // 統計は「詳細設定」に折り畳まれているため開く。
+  await page.getByTestId('details-toggle').click();
   await expect
     .poll(async () => {
       const txt = await page.getByTestId('visible-count').innerText();

@@ -224,6 +224,8 @@ export function LeftPanel() {
   const dependencies = useApp((s) => s.dependencies);
   const viewSpec = useApp((s) => s.viewSpec);
   const cpHighlight = useApp((s) => s.cpHighlight);
+  // 詳細設定（私は誰/表示モード/展開/検索/カレンダー/統計/凡例）は既定で折り畳む（§大胆に隠す）。
+  const [showDetails, setShowDetails] = useState(false);
 
   const cpm = useCpm();
   const stats = useMemo(
@@ -253,14 +255,7 @@ export function LeftPanel() {
 
   return (
     <div className="panel">
-      <h3>私は誰（updatedBy / @me）</h3>
-      <input
-        value={me}
-        onChange={(e) => useApp.getState().setMe(e.target.value)}
-        style={{ width: '100%', padding: '4px 6px' }}
-      />
-
-      <h3>組込みビュー</h3>
+      <h3 className="panel-title">絞り込み</h3>
       <div className="row">
         <button className="btn" onClick={() => useApp.getState().quickMyTasks()}>
           自分のタスク
@@ -282,11 +277,7 @@ export function LeftPanel() {
         </button>
       </div>
 
-      <SavedViews />
-
-      <WbsTreePanel />
-
-      <h3>フィルタ（AND結合）</h3>
+      {/* 主要フィルタ（工種・状態・担当）だけ常時表示。細かい条件は詳細設定へ。 */}
       <div className="field">
         <label>工種</label>
         <div className="row">{DISCIPLINES.map((d) => chip('disciplines', d, d))}</div>
@@ -312,92 +303,117 @@ export function LeftPanel() {
           ))}
         </select>
       </div>
-      <div className="field">
-        <label>WBSプレフィックス</label>
-        <input
-          placeholder="例 1.2"
-          value={(filter.wbsPrefixes && filter.wbsPrefixes[0]) || ''}
-          onChange={(e) =>
-            useApp.getState().setFilter({ wbsPrefixes: e.target.value ? [e.target.value.trim()] : [] })
-          }
-        />
-      </div>
-      <div className="field">
-        <label>テキスト検索</label>
-        <input
-          placeholder="名前/notes"
-          value={filter.text || ''}
-          onChange={(e) => useApp.getState().setFilter({ text: e.target.value })}
-        />
-      </div>
-      <div className="row">
-        <span>表示モード:</span>
-        <button
-          className={'btn' + (displayMode === 'DIM' ? ' on' : '')}
-          onClick={() => useApp.getState().setDisplayMode('DIM')}
-        >
-          DIM減光
-        </button>
-        <button
-          className={'btn' + (displayMode === 'ISOLATE' ? ' on' : '')}
-          onClick={() => useApp.getState().setDisplayMode('ISOLATE')}
-        >
-          ISOLATE抽出
-        </button>
-      </div>
       <div className="row">
         <button className="btn" onClick={() => useApp.getState().clearFilter()}>
           フィルタ解除
         </button>
       </div>
 
-      <h3>WBS展開レベル（§2.7）</h3>
-      <div className="row">
-        {[1, 2, 3].map((n) => (
-          <button
-            key={n}
-            className={'btn' + (expandLevel === n ? ' on' : '')}
-            onClick={() => useApp.getState().setExpandLevel(n)}
-          >
-            Lv{n}
-          </button>
-        ))}
-        <button className="btn" onClick={() => useApp.getState().collapseAll()}>
-          全折り畳み
-        </button>
-      </div>
+      <WbsTreePanel />
 
-      <CalendarEditor />
+      <SavedViews />
 
-      <h3>表示統計</h3>
-      <div className="stat">
-        全タスク: <b>{stats.total}</b>
-      </div>
-      <div className="stat" data-testid="visible-count">
-        表示ノード: <b>{stats.visible}</b>（集約 {stats.aggregates}）
-      </div>
-      <div className="stat">
-        表示エッジ: <b>{stats.edges}</b>
-      </div>
-      <div className="stat">
-        マッチ: <b>{stats.matched}</b>
-      </div>
+      {/* ▼ 詳細設定（既定で折り畳み）: 普段は触らない項目をまとめて隠す（大胆に隠す） */}
+      <button
+        className="details-toggle"
+        data-testid="details-toggle"
+        onClick={() => setShowDetails((v) => !v)}
+      >
+        {showDetails ? '▾' : '▸'} 詳細設定
+      </button>
+      {showDetails ? (
+        <div className="details-body" data-testid="details-body">
+          <h3>私は誰（updatedBy / @me）</h3>
+          <input
+            value={me}
+            onChange={(e) => useApp.getState().setMe(e.target.value)}
+            style={{ width: '100%', padding: '4px 6px' }}
+          />
 
-      <h3>凡例</h3>
-      <div className="legend">
-        <span>
-          <i style={{ background: DISC_COLOR.E }} />
-          設計E
-        </span>
-        <span>
-          <i style={{ background: DISC_COLOR.P }} />
-          調達P
-        </span>
-        <span>
-          <i style={{ background: DISC_COLOR.C }} />
-          施工C
-        </span>
-      </div>
+          <h3>詳細フィルタ</h3>
+          <div className="field">
+            <label>WBSプレフィックス</label>
+            <input
+              placeholder="例 1.2"
+              value={(filter.wbsPrefixes && filter.wbsPrefixes[0]) || ''}
+              onChange={(e) =>
+                useApp.getState().setFilter({ wbsPrefixes: e.target.value ? [e.target.value.trim()] : [] })
+              }
+            />
+          </div>
+          <div className="field">
+            <label>テキスト検索</label>
+            <input
+              placeholder="名前/notes"
+              value={filter.text || ''}
+              onChange={(e) => useApp.getState().setFilter({ text: e.target.value })}
+            />
+          </div>
+          <div className="row">
+            <span>表示モード:</span>
+            <button
+              className={'btn' + (displayMode === 'DIM' ? ' on' : '')}
+              onClick={() => useApp.getState().setDisplayMode('DIM')}
+            >
+              DIM減光
+            </button>
+            <button
+              className={'btn' + (displayMode === 'ISOLATE' ? ' on' : '')}
+              onClick={() => useApp.getState().setDisplayMode('ISOLATE')}
+            >
+              ISOLATE抽出
+            </button>
+          </div>
+
+          <h3>WBS展開レベル（§2.7）</h3>
+          <div className="row">
+            {[1, 2, 3].map((n) => (
+              <button
+                key={n}
+                className={'btn' + (expandLevel === n ? ' on' : '')}
+                onClick={() => useApp.getState().setExpandLevel(n)}
+              >
+                Lv{n}
+              </button>
+            ))}
+            <button className="btn" onClick={() => useApp.getState().collapseAll()}>
+              全折り畳み
+            </button>
+          </div>
+
+          <CalendarEditor />
+
+          <h3>表示統計</h3>
+          <div className="stat">
+            全タスク: <b>{stats.total}</b>
+          </div>
+          <div className="stat" data-testid="visible-count">
+            表示ノード: <b>{stats.visible}</b>（集約 {stats.aggregates}）
+          </div>
+          <div className="stat">
+            表示エッジ: <b>{stats.edges}</b>
+          </div>
+          <div className="stat">
+            マッチ: <b>{stats.matched}</b>
+          </div>
+
+          <h3>凡例</h3>
+          <div className="legend">
+            <span>
+              <i style={{ background: DISC_COLOR.E }} />
+              設計E
+            </span>
+            <span>
+              <i style={{ background: DISC_COLOR.P }} />
+              調達P
+            </span>
+            <span>
+              <i style={{ background: DISC_COLOR.C }} />
+              施工C
+            </span>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

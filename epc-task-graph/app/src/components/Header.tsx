@@ -97,22 +97,54 @@ function ProjectBar() {
           </option>
         ))}
       </select>
-      <button className="btn" title="新規プロジェクト" onClick={() => useApp.getState().newProject('新規プロジェクト')}>
-        ＋新規
-      </button>
-      <button className="btn" title="複製" onClick={() => useApp.getState().duplicateCurrentProject()}>
-        複製
-      </button>
-      <button
-        className="btn"
-        title="削除"
-        onClick={() => {
-          if (confirm('このプロジェクトを削除しますか？（元に戻せません）')) useApp.getState().deleteCurrentProject();
-        }}
-      >
-        削除
-      </button>
     </span>
+  );
+}
+
+// 操作メニュー（二次操作を集約・大胆に隠す）: プロジェクト管理・整列・デモ生成。
+function ActionsMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+  const item = (label: string, fn: () => void) => (
+    <button
+      className="menu-item"
+      onClick={() => {
+        fn();
+        setOpen(false);
+      }}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="menu" ref={ref}>
+      <button className="btn" data-testid="actions-menu" title="操作" onClick={() => setOpen((o) => !o)}>
+        操作 ▾
+      </button>
+      {open ? (
+        <div className="menu-pop">
+          {item('自動整列（表示中）', () => useApp.getState().runners.layoutVisible?.())}
+          {item('全体整列（Worker）', () => useApp.getState().layoutAll())}
+          <div className="menu-sep" />
+          {item('＋新規プロジェクト', () => useApp.getState().newProject('新規プロジェクト'))}
+          {item('プロジェクトを複製', () => useApp.getState().duplicateCurrentProject())}
+          {item('プロジェクトを削除…', () => {
+            if (confirm('このプロジェクトを削除しますか？（元に戻せません）'))
+              useApp.getState().deleteCurrentProject();
+          })}
+          <div className="menu-sep" />
+          {item('4,000ノード生成（デモ）', () => useApp.getState().generateDemo())}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -209,12 +241,6 @@ export function Header() {
       <button className="btn primary" onClick={() => runners.createAtCenter?.()}>
         ＋タスク (N)
       </button>
-      <button className="btn" onClick={() => runners.layoutVisible?.()}>
-        自動整列（表示中）
-      </button>
-      <button className="btn" onClick={() => useApp.getState().layoutAll()}>
-        全体整列（Worker）
-      </button>
       <button className="btn" disabled={!canUndo} onClick={() => useApp.getState().undo()}>
         ↶ Undo
       </button>
@@ -222,9 +248,7 @@ export function Header() {
         Redo ↷
       </button>
       <span className="spacer" />
-      <button className="btn" onClick={() => useApp.getState().generateDemo()}>
-        4,000ノード生成
-      </button>
+      <ActionsMenu />
       <DataMenu
         onJsonExport={doExport}
         onJsonImport={() => fileRef.current?.click()}

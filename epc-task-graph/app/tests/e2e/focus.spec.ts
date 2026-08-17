@@ -17,7 +17,7 @@ function pickConnected(page: Page) {
 test('関係ハイライト: 近傍にリング＋世代バッジ、非近傍は文脈として残る→抽出で絞る', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => !!(window as any).__APP);
-  await page.getByRole('button', { name: '4,000ノード生成' }).click();
+  await page.evaluate(() => (window as any).__APP.getState().generateDemo());
   await expect
     .poll(async () => page.evaluate(() => (window as any).__APP.getState().tasks.length))
     .toBe(4000);
@@ -26,6 +26,8 @@ test('関係ハイライト: 近傍にリング＋世代バッジ、非近傍は
   // H 相当（toggleFocus）＝関係ハイライト既定
   await page.evaluate((tid) => (window as any).__APP.getState().toggleFocus(tid), id);
 
+  // 統計は「詳細設定」に折り畳まれているため開く。
+  await page.getByTestId('details-toggle').click();
   // 集約数は統計パネルから読む（React Flow のビューポート・カリングでDOMは変動するため）。
   const aggCount = async () => {
     const txt = await page.getByTestId('visible-count').innerText();

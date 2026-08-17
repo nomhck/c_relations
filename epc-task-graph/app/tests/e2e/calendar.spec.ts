@@ -18,6 +18,8 @@ test('稼働カレンダー: 週休2日で週末を跨ぐ作業が、土日を�
   // 既定=週休2日(月〜金)。月開始の6稼働日は土日を跨いで EF=+8d。
   await expect(page.getByTestId('cpm-es')).toContainText('+8d');
 
+  // 稼働カレンダーは「詳細設定」に折り畳まれているため開く。
+  await page.getByTestId('details-toggle').click();
   // 土(index6)・日(index0)を稼働日に切替 → 全曜日稼働＝線形で EF=+6d。
   const wd = page.getByTestId('workingdays').locator('.wd-btn');
   await wd.nth(6).click(); // 土
