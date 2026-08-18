@@ -149,7 +149,6 @@ function ActionsMenu() {
 }
 
 export function Header() {
-  const name = useApp((s) => s.project.name);
   const saveStatus = useApp((s) => s.saveStatus);
   const runners = useApp((s) => s.runners);
   const cpHighlight = useApp((s) => s.cpHighlight);
@@ -227,7 +226,17 @@ export function Header() {
 
   return (
     <div className="header">
-      <span className="proj">{name}</span>
+      <span className="brand" title="C-Relations — EPC タスク依存グラフ">
+        <svg className="brand-mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+          <line x1="5" y1="7" x2="11" y2="15" />
+          <line x1="11" y1="15" x2="17" y2="7" />
+          <line x1="5" y1="7" x2="17" y2="7" />
+          <circle cx="5" cy="7" r="2.4" />
+          <circle cx="11" cy="15" r="2.4" />
+          <circle cx="17" cy="7" r="2.4" />
+        </svg>
+        <span className="brand-name">C-Relations</span>
+      </span>
       <ProjectBar />
       <CompletionSummary />
       <button

@@ -127,20 +127,21 @@
   position: relative;
 }
 .help-btn {
-  background: transparent;
-  border: 1px solid var(--border-strong);
+  background: var(--accent-weak);
+  border: 1px solid #bfdbfe;
   border-radius: 999px;
-  color: var(--muted);
-  font-size: 12px;
-  padding: 4px 12px;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 14px;
   cursor: pointer;
   transition:
     background 0.15s ease,
-    color 0.15s ease;
+    box-shadow 0.15s ease;
 }
 .help-btn:hover {
-  background: var(--ctl-bg);
-  color: var(--ink);
+  background: #dbeafe;
+  box-shadow: 0 1px 3px rgba(0, 113, 227, 0.25);
 }
 .help-pop {
   position: absolute;
@@ -268,3 +269,31 @@
   min-height: 0;
 }
 
+
+/* React Flow の俯瞰・操作系を洗練（角丸＋ソフト影＋ヘアライン） */
+.react-flow__minimap {
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  background: #fff !important;
+}
+.react-flow__controls {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--panel-border);
+}
+.react-flow__controls-button {
+  background: #fff;
+  border: none;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--muted);
+}
+.react-flow__controls-button:hover {
+  background: var(--ctl-bg);
+  color: var(--ink);
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
+}

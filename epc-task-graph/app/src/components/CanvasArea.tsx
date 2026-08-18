@@ -367,7 +367,7 @@ export function CanvasArea() {
         fitView
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={16} />
+        <Background gap={18} size={1.2} color="#d7dbe3" bgColor="#fbfbfd" />
         <MiniMap
           pannable
           zoomable
