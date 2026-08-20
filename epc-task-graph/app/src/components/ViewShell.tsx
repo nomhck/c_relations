@@ -4,12 +4,76 @@
 //   ビューポート/スクロール位置/選択が保たれる）。復帰時に fitView は呼ばない。
 // 選択・フィルタ・折り畳みはストア共有状態なので「同期は基本なにもしない」で成立する。
 // ============================================================================
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../store/store';
-import type { ActiveView } from '../domain';
+import { isFilterActive, matchesFilter, type ActiveView } from '../domain';
+import { useCpm } from '../store/useCpm';
 import { CanvasArea } from './CanvasArea';
 import { TableView } from './table/TableView';
 import { GanttView } from './gantt/GanttView';
+
+// フィルタ状態バナー（何で絞っているかを一目で・件数つき・ワンクリック解除）。
+// 「filter したものだけを分かりやすく」の中核: 今の絞り込みを言語化して常に見せる。
+function describeFilter(f: any, me: string): string[] {
+  const parts: string[] = [];
+  if (f.assignees?.length) {
+    const a = f.assignees[0] === '@me' ? `自分（${me}）` : f.assignees[0];
+    parts.push('担当: ' + a);
+  }
+  if (f.criticalOnly) parts.push('クリティカルパス');
+  if (f.milestonesOnly) parts.push('マイルストーン');
+  if (f.disciplines?.length) parts.push('工種: ' + f.disciplines.join('・'));
+  if (f.statuses?.length) parts.push('状態: ' + f.statuses.map((s: string) => s.replace('_', ' ')).join('・'));
+  if (f.wbsPrefixes?.length) parts.push('WBS: ' + f.wbsPrefixes.join('・'));
+  if (f.text?.trim()) parts.push(`検索「${f.text.trim()}」`);
+  return parts;
+}
+
+function FilterBanner() {
+  const viewSpec = useApp((s) => s.viewSpec);
+  const tasks = useApp((s) => s.tasks);
+  const me = useApp((s) => s.me);
+  const focus = viewSpec.focus;
+  const cpm = useCpm();
+  const active = isFilterActive(viewSpec.filter);
+  const matched = useMemo(() => {
+    if (!active) return 0;
+    let n = 0;
+    for (const t of tasks) if (matchesFilter(t, viewSpec.filter, me, cpm.criticalTasks)) n++;
+    return n;
+  }, [active, tasks, viewSpec.filter, me, cpm]);
+
+  if (!active && !focus) return null; // 絞り込みも近傍もなければ非表示
+
+  const parts = active ? describeFilter(viewSpec.filter, me) : [];
+  const bu = viewSpec.boundaryUp || 0;
+  const bd = viewSpec.boundaryDown || 0;
+  if (active && (bu || bd)) parts.push(`受け渡し 前${bu}/後${bd}`);
+  if (focus) parts.push('近傍フォーカス中');
+
+  return (
+    <div className="filter-banner" data-testid="filter-banner">
+      <span className="fb-dot" />
+      <span className="fb-label">絞り込み中</span>
+      <span className="fb-desc">{parts.join(' ・ ')}</span>
+      {active ? (
+        <span className="fb-count" data-testid="filter-count">
+          {matched}件
+        </span>
+      ) : null}
+      <button
+        className="fb-clear"
+        data-testid="filter-clear"
+        onClick={() => {
+          useApp.getState().clearFilter();
+          useApp.getState().clearFocus();
+        }}
+      >
+        すべて表示 ✕
+      </button>
+    </div>
+  );
+}
 
 // 操作マニュアル（タブ横ヘルプ）。実運用の「まず絞る→それから見る」ワークフローと主要操作を
 // その場で確認できる。4,000件を一度に見るのは非現実的なので、絞り込み導線を最上段に置く。
@@ -159,6 +223,7 @@ export function ViewShell() {
         </div>
         <HelpButton />
       </div>
+      <FilterBanner />
       <div className="viewstack">
         <div className="view-pane" style={{ display: activeView === 'graph' ? 'flex' : 'none' }}>
           <CanvasArea />

@@ -297,3 +297,71 @@
 .react-flow__controls-button svg {
   fill: currentColor;
 }
+
+/* フィルタ状態バナー（何で絞っているか一目・件数・ワンクリック解除） */
+.filter-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 14px 8px;
+  padding: 7px 12px;
+  background: var(--accent-weak);
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  font-size: 12.5px;
+  animation: fbIn 0.2s ease;
+}
+@keyframes fbIn {
+  from { opacity: 0; transform: translateY(-3px); }
+}
+.filter-banner .fb-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.18);
+  flex: 0 0 auto;
+}
+.filter-banner .fb-label {
+  font-weight: 700;
+  color: var(--accent);
+}
+.filter-banner .fb-desc {
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-banner .fb-count {
+  font-weight: 700;
+  color: var(--accent);
+  background: #fff;
+  border-radius: 999px;
+  padding: 1px 9px;
+  flex: 0 0 auto;
+}
+.filter-banner .fb-clear {
+  margin-left: auto;
+  flex: 0 0 auto;
+  background: #fff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 12px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.filter-banner .fb-clear:hover {
+  background: #dbeafe;
+}
+
+/* フィルタ結果のフェードイン: 新規に現れたノードだけ柔らかく浮かせる（分かりやすさ） */
+.task-node,
+.agg-card,
+.ms-wrap {
+  animation: nodeIn 0.22s ease;
+}
+@keyframes nodeIn {
+  from { opacity: 0; transform: scale(0.96); }
+}

@@ -136,6 +136,23 @@ export function CanvasArea() {
     setEdges(toRFEdges(derived.visibleEdges));
   }, [derived, displayNodes]);
 
+  // フィルタ/前後/表示モードが変わったら、結果へ滑らかに自動フィット（余白に迷子にならない）。
+  // タスク編集では発火しない（フィルタ状態のキーだけを監視）。
+  const filterKey = JSON.stringify({
+    f: viewSpec.filter,
+    bu: viewSpec.boundaryUp,
+    bd: viewSpec.boundaryDown,
+    dm: viewSpec.displayMode,
+    fo: viewSpec.focus?.taskId ?? null,
+  });
+  const prevFilterKey = useRef(filterKey);
+  useEffect(() => {
+    if (prevFilterKey.current === filterKey) return;
+    prevFilterKey.current = filterKey;
+    const id = setTimeout(() => rf.fitView({ duration: 500, padding: 0.22 }), 90);
+    return () => clearTimeout(id);
+  }, [filterKey, rf]);
+
   // 1,500ノード超の表示は警告（§2.6 第一の防御）
   const warned = useRef(false);
   useEffect(() => {
