@@ -118,6 +118,10 @@ export interface ViewSpec {
   collapsedWbs: string[];
   focus: FocusSpec | null;
   me: string;
+  // 「担当＋前後」ビュー（§2.9 拡張）: フィルタ一致タスクから前 up 世代・後 down 世代の受け渡し先を
+  // 文脈として含める。0=含めない（既定・従来挙動）。focus とは独立（focus 優先）。
+  boundaryUp?: number;
+  boundaryDown?: number;
   // ---- CPM 導出値の受け皿（非永続・§5.1/§9.2）。derive 時に注入される ----
   criticalTasks?: Set<string>; // isCritical=true のタスク（criticalOnly フィルタ・CP強調に使用）
   criticalEdges?: Set<string>; // 駆動依存の dependency.id（CP強調に使用）

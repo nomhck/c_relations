@@ -1,3 +1,42 @@
+/* 前後の受け渡し（担当＋前後ビューの世代調節） */
+.boundary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 8px 0 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.boundary-label {
+  font-weight: 600;
+  color: var(--ink);
+}
+.boundary-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.boundary-step b {
+  min-width: 12px;
+  text-align: center;
+  color: var(--ink);
+}
+.boundary .stepbtn {
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0;
+}
+.boundary .stepbtn:hover {
+  background: var(--ctl-bg);
+}
+
 /* 詳細設定トグル（大胆に隠す） */
 .details-toggle {
   width: 100%;

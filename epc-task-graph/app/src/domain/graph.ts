@@ -179,3 +179,42 @@ export function neighborhood(
   }
   return { set, directPred, directSucc, gen };
 }
+
+// 多起点の世代展開（§2.9 拡張・「担当＋前後」ビュー用）: origins 集合（例=自分の担当タスク）から
+// 上流 up 世代・下流 down 世代ぶん、pred/succ 方向へ多起点 BFS で広げる。origins 自身は境界に含まない
+// （呼び出し側が「一致＝主役／展開＝受け渡しの文脈」を区別できるよう boundary だけ返す）。
+// 返り値 boundary: origins から到達したが origins 自身ではないタスク集合＝「前後の受け渡し先」。
+export function expandBoundary(
+  origins: Iterable<string>,
+  succ: Map<string, Set<string>>,
+  pred: Map<string, Set<string>>,
+  up: number,
+  down: number,
+): Set<string> {
+  const originSet = new Set(origins);
+  const visited = new Set(originSet); // 二重訪問防止（origins は展開しない）
+  const boundary = new Set<string>();
+  const walk = (adj: Map<string, Set<string>>, depth: number) => {
+    let frontier: string[] = [...originSet];
+    for (let lvl = 0; lvl < depth; lvl++) {
+      const next: string[] = [];
+      for (const cur of frontier) {
+        const ns = adj.get(cur);
+        if (!ns) continue;
+        for (const n of ns) {
+          if (visited.has(n)) continue;
+          visited.add(n);
+          if (!originSet.has(n)) boundary.add(n); // origins 以外＝受け渡し先
+          next.push(n);
+        }
+      }
+      frontier = next;
+    }
+  };
+  walk(pred, up); // 上流（前工程）へ
+  // 下流探索は visited を origins だけに戻してから（上流で拾った枝を下流でも独立に辿れるように）。
+  visited.clear();
+  for (const o of originSet) visited.add(o);
+  walk(succ, down); // 下流（後工程）へ
+  return boundary;
+}

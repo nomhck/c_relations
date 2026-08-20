@@ -170,6 +170,7 @@ export interface AppState {
   bulkUpdateTasks: (ids: string[], patch: Partial<Task>) => void; // 一括更新（1確定=1 Undo）
   setFilter: (patch: Partial<GraphFilter>) => void;
   clearFilter: () => void;
+  setBoundary: (up: number, down: number) => void; // 「担当＋前後」の受け渡し世代（前up/後down）
   setDisplayMode: (m: DisplayMode) => void;
   toggleArrayFilter: (key: 'disciplines' | 'statuses' | 'assignees' | 'wbsPrefixes', val: string) => void;
   setExpandLevel: (n: number) => void;
@@ -617,6 +618,14 @@ export const useApp = create<AppState>()(
       clearFilter: () =>
         set((s) => {
           s.viewSpec.filter = {};
+          s.viewSpec.boundaryUp = 0;
+          s.viewSpec.boundaryDown = 0;
+        }),
+      // 前後の受け渡し世代を設定（0-9でクランプ）。フィルタ有効時に文脈として前後を含める。
+      setBoundary: (up, down) =>
+        set((s) => {
+          s.viewSpec.boundaryUp = Math.max(0, Math.min(9, Math.round(up)));
+          s.viewSpec.boundaryDown = Math.max(0, Math.min(9, Math.round(down)));
         }),
       setDisplayMode: (m) => {
         set((s) => {
@@ -718,11 +727,14 @@ export const useApp = create<AppState>()(
             s.selection = { taskId: null, edgeId: null, aggId: null };
           }
         }),
+      // 「自分のタスク」＝担当で絞る＋前後1世代の受け渡し先を文脈表示（担当＋前後ビューの既定）。
       quickMyTasks: () => {
         set((s) => {
           s.viewSpec.displayMode = 'ISOLATE';
           s.viewSpec.focus = null;
           s.viewSpec.filter = { assignees: ['@me'] };
+          s.viewSpec.boundaryUp = 1;
+          s.viewSpec.boundaryDown = 1;
         });
         get().fit();
       },
@@ -732,6 +744,8 @@ export const useApp = create<AppState>()(
           s.viewSpec.displayMode = 'ISOLATE';
           s.viewSpec.focus = null;
           s.viewSpec.filter = { criticalOnly: true };
+          s.viewSpec.boundaryUp = 0;
+          s.viewSpec.boundaryDown = 0;
           s.cpHighlight = true;
         });
         get().fit();

@@ -153,3 +153,36 @@ describe('deriveVisibleGraph: 関係ハイライト（focus mode=highlight・§2
     expect(ids.has(far[0].id)).toBe(false);
   });
 });
+
+describe('deriveVisibleGraph: 担当＋前後ビュー（boundary・§2.9拡張）', () => {
+  // A→B→C→D→E。担当フィルタで C だけ一致させ、前後1世代（B,D）を文脈表示する。
+  const t = ['A', 'B', 'C', 'D', 'E'].map((n) =>
+    makeTask({ name: n, wbsCode: '1', assignee: n === 'C' ? '自部署' : '他部署' }),
+  );
+  const deps: ReturnType<typeof makeDep>[] = [];
+  for (let i = 0; i + 1 < t.length; i++) deps.push(makeDep(t[i].id, t[i + 1].id));
+
+  it('ISOLATE＋担当フィルタ＋前後1 で 一致(C)＋受け渡し先(B,D) が残り、B/D は outside 文脈', () => {
+    const res = deriveVisibleGraph(
+      t,
+      deps,
+      spec({ filter: { assignees: ['自部署'] }, displayMode: 'ISOLATE', boundaryUp: 1, boundaryDown: 1 }),
+    );
+    const taskNodes = res.visibleNodes.filter((n) => n.kind === 'task');
+    const byName = new Map(taskNodes.map((n) => [n.task.name, n]));
+    expect([...byName.keys()].sort()).toEqual(['B', 'C', 'D']); // A,E は範囲外
+    expect((byName.get('C') as any).outside).toBe(false); // 一致＝主役
+    expect((byName.get('B') as any).outside).toBe(true); // 前の受け渡し先＝文脈
+    expect((byName.get('D') as any).outside).toBe(true); // 後の受け渡し先＝文脈
+  });
+
+  it('boundary=0 なら従来どおり一致タスクのみ（受け渡し先は出ない）', () => {
+    const res = deriveVisibleGraph(
+      t,
+      deps,
+      spec({ filter: { assignees: ['自部署'] }, displayMode: 'ISOLATE', boundaryUp: 0, boundaryDown: 0 }),
+    );
+    const names = res.visibleNodes.filter((n) => n.kind === 'task').map((n) => n.task.name);
+    expect(names).toEqual(['C']);
+  });
+});

@@ -15,7 +15,7 @@ import type {
   ViewSpec,
 } from './types';
 import type { CpmTaskResult } from './cpm';
-import { buildAdjacency, neighborhood } from './graph';
+import { buildAdjacency, expandBoundary, neighborhood } from './graph';
 import { isFilterActive, matchesFilter } from './filter';
 import { buildWbsTree, isWbsPrefix, naturalWbsCompare, type WbsTreeNode } from './wbs';
 
@@ -77,6 +77,8 @@ export function deriveTableRows(
   const collapsedWbs = (viewSpec && viewSpec.collapsedWbs) || [];
   const focus = (viewSpec && viewSpec.focus) || null;
   const me = (viewSpec && viewSpec.me) || '';
+  const boundaryUp = (viewSpec && viewSpec.boundaryUp) || 0;
+  const boundaryDown = (viewSpec && viewSpec.boundaryDown) || 0;
   const criticalTasks = (viewSpec && viewSpec.criticalTasks) || null;
   const sortSpec = sort && sort.length ? sort : [];
 
@@ -102,6 +104,12 @@ export function deriveTableRows(
   }
   const isoRemove = active && displayMode === 'ISOLATE' && !nb;
 
+  // 「担当＋前後」ビュー: 一致集合から前後の受け渡し先を文脈として含める（graph と同じ規則）。
+  const boundarySet =
+    active && !nb && (boundaryUp > 0 || boundaryDown > 0)
+      ? expandBoundary(matchSet, succ, pred, boundaryUp, boundaryDown)
+      : null;
+
   // 候補集合（deriveVisibleGraph 段1-2 と同じ規則）。
   const cands: Cand[] = [];
   for (const t of tasks) {
@@ -109,10 +117,18 @@ export function deriveTableRows(
       if (!nb.set.has(t.id)) continue;
       cands.push({ task: t, dim: false, outside: active && !matchSet.has(t.id) });
     } else if (isoRemove) {
-      if (!matchSet.has(t.id)) continue;
-      cands.push({ task: t, dim: false, outside: false });
+      const isMatch = matchSet.has(t.id);
+      const isBoundary = !!boundarySet && boundarySet.has(t.id);
+      if (!isMatch && !isBoundary) continue;
+      cands.push({ task: t, dim: false, outside: !isMatch });
     } else {
-      cands.push({ task: t, dim: active && displayMode === 'DIM' && !matchSet.has(t.id), outside: false });
+      const isMatch = !active || matchSet.has(t.id);
+      const isBoundary = !!boundarySet && boundarySet.has(t.id);
+      cands.push({
+        task: t,
+        dim: active && displayMode === 'DIM' && !isMatch && !isBoundary,
+        outside: active && !isMatch && isBoundary,
+      });
     }
   }
 

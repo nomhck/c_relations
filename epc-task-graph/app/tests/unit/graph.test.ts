@@ -5,6 +5,7 @@ import {
   canConnect,
   topoSort,
   neighborhood,
+  expandBoundary,
   makeTask,
   makeDep,
 } from '../../src/domain';
@@ -103,6 +104,23 @@ describe('graph: neighborhood（近傍抽出・§2.9）', () => {
     const { succ, pred } = buildAdjacency(deps);
     const nb = neighborhood(tasks[2].id, succ, pred, 2, 2);
     expect(nb.set.size).toBe(5); // 全部
+  });
+
+  it('expandBoundary: 担当集合の前後の受け渡し先だけを返す（origins は含めない）', () => {
+    const { tasks, deps } = chain(['A', 'B', 'C', 'D', 'E']); // A→B→C→D→E
+    const { succ, pred } = buildAdjacency(deps);
+    // 担当=C のみ。前1・後1 → 受け渡し先は B(前) と D(後)。C 自身は含まない。
+    const b1 = expandBoundary([tasks[2].id], succ, pred, 1, 1);
+    expect([...b1].sort()).toEqual([tasks[1].id, tasks[3].id].sort());
+    expect(b1.has(tasks[2].id)).toBe(false); // origins は境界に含めない
+
+    // 前2・後0 → A,B（Cの上流2世代）。下流は含めない。
+    const b2 = expandBoundary([tasks[2].id], succ, pred, 2, 0);
+    expect([...b2].sort()).toEqual([tasks[0].id, tasks[1].id].sort());
+
+    // 複数起点（B と D）・前後1 → A,C（Bの前後）＋C,E（Dの前後）＝ A,C,E。
+    const b3 = expandBoundary([tasks[1].id, tasks[3].id], succ, pred, 1, 1);
+    expect([...b3].sort()).toEqual([tasks[0].id, tasks[2].id, tasks[4].id].sort());
   });
 
   it('世代マップ: 起点=0・上流=負・下流=正（§2.9 世代フィルタ）', () => {

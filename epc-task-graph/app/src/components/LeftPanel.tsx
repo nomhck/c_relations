@@ -277,6 +277,47 @@ export function LeftPanel() {
         </button>
       </div>
 
+      {/* 前後の受け渡しを何世代まで文脈に含めるか（担当＋前後ビューの深さ調節・§2.9拡張） */}
+      <div className="boundary" data-testid="boundary" title="絞り込んだタスクの前後（受け渡し先）を何世代まで一緒に表示するか">
+        <span className="boundary-label">受け渡しも表示</span>
+        <span className="boundary-step">
+          前
+          <button
+            className="stepbtn"
+            aria-label="前の世代を減らす"
+            onClick={() => useApp.getState().setBoundary((viewSpec.boundaryUp || 0) - 1, viewSpec.boundaryDown || 0)}
+          >
+            −
+          </button>
+          <b data-testid="boundary-up">{viewSpec.boundaryUp || 0}</b>
+          <button
+            className="stepbtn"
+            aria-label="前の世代を増やす"
+            onClick={() => useApp.getState().setBoundary((viewSpec.boundaryUp || 0) + 1, viewSpec.boundaryDown || 0)}
+          >
+            ＋
+          </button>
+        </span>
+        <span className="boundary-step">
+          後
+          <button
+            className="stepbtn"
+            aria-label="後の世代を減らす"
+            onClick={() => useApp.getState().setBoundary(viewSpec.boundaryUp || 0, (viewSpec.boundaryDown || 0) - 1)}
+          >
+            −
+          </button>
+          <b data-testid="boundary-down">{viewSpec.boundaryDown || 0}</b>
+          <button
+            className="stepbtn"
+            aria-label="後の世代を増やす"
+            onClick={() => useApp.getState().setBoundary(viewSpec.boundaryUp || 0, (viewSpec.boundaryDown || 0) + 1)}
+          >
+            ＋
+          </button>
+        </span>
+      </div>
+
       {/* 主要フィルタ（工種・状態・担当）だけ常時表示。細かい条件は詳細設定へ。 */}
       <div className="field">
         <label>工種</label>

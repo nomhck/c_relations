@@ -11,7 +11,7 @@ import type {
   VisibleNode,
   ViewSpec,
 } from './types';
-import { buildAdjacency, neighborhood } from './graph';
+import { buildAdjacency, expandBoundary, neighborhood } from './graph';
 import { isFilterActive, matchesFilter } from './filter';
 import { isWbsPrefix } from './wbs';
 
@@ -35,6 +35,8 @@ export function deriveVisibleGraph(
   const displayMode = (viewSpec && viewSpec.displayMode) || 'DIM';
   const collapsedWbs = (viewSpec && viewSpec.collapsedWbs) || [];
   const focus = (viewSpec && viewSpec.focus) || null;
+  const boundaryUp = (viewSpec && viewSpec.boundaryUp) || 0;
+  const boundaryDown = (viewSpec && viewSpec.boundaryDown) || 0;
   const me = (viewSpec && viewSpec.me) || '';
   const criticalTasks = (viewSpec && viewSpec.criticalTasks) || null;
   const criticalEdges = (viewSpec && viewSpec.criticalEdges) || null;
@@ -56,6 +58,13 @@ export function deriveVisibleGraph(
   // 'highlight'=近傍を強調しつつ全体を残す（非近傍は淡色）。'isolate'（既定）=近傍だけ抽出。
   const nbHighlight = !!(nb && focus!.mode === 'highlight');
   const isoRemove = active && displayMode === 'ISOLATE' && !nb;
+
+  // 「担当＋前後」ビュー: フィルタ一致集合から前後の受け渡し先を文脈として含める（§2.9拡張）。
+  // focus 中は無効（focus 優先）。boundary タスクは outside=文脈扱いで表示。
+  const boundarySet =
+    active && !nb && (boundaryUp > 0 || boundaryDown > 0)
+      ? expandBoundary(matchSet, succ, pred, boundaryUp, boundaryDown)
+      : null;
 
   const cands: Candidate[] = [];
   for (const t of tasks) {
@@ -85,10 +94,20 @@ export function deriveVisibleGraph(
         gen: nb.gen.get(t.id),
       });
     } else if (isoRemove) {
-      if (!matchSet.has(t.id)) continue;
-      cands.push({ task: t, dim: false, outside: false });
+      // ISOLATE: 一致タスク＋（あれば）前後の受け渡し先だけ残す。受け渡し先は outside=文脈。
+      const isMatch = matchSet.has(t.id);
+      const isBoundary = !!boundarySet && boundarySet.has(t.id);
+      if (!isMatch && !isBoundary) continue;
+      cands.push({ task: t, dim: false, outside: !isMatch });
     } else {
-      cands.push({ task: t, dim: active && displayMode === 'DIM' && !matchSet.has(t.id), outside: false });
+      // DIM: 一致＝通常／受け渡し先＝outside 文脈／それ以外＝淡色。
+      const isMatch = !active || matchSet.has(t.id);
+      const isBoundary = !!boundarySet && boundarySet.has(t.id);
+      cands.push({
+        task: t,
+        dim: active && displayMode === 'DIM' && !isMatch && !isBoundary,
+        outside: active && !isMatch && isBoundary,
+      });
     }
   }
   const candIds = new Set(cands.map((c) => c.task.id));
