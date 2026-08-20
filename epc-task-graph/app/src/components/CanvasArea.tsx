@@ -102,11 +102,42 @@ function FocusBar() {
   );
 }
 
+// つなぐモードのツールバー＋状態ヒント（クリックで接続/切断・電撃演出つき）。
+function ConnectBar() {
+  const connectMode = useApp((s) => s.connectMode);
+  const connectSource = useApp((s) => s.connectSource);
+  const srcName = useApp((s) => (s.connectSource ? nameOf(s.connectSource) : ''));
+  return (
+    <div className="connectbar">
+      <button
+        className={'btn' + (connectMode ? ' on' : '')}
+        data-testid="connect-toggle"
+        onClick={() => useApp.getState().toggleConnectMode()}
+        title="クリックで依存をつなぐ/切る（トラックパッド向け）"
+      >
+        🔗 つなぐ
+      </button>
+      {connectMode ? (
+        <span className="connect-hint" data-testid="connect-hint">
+          {connectSource ? (
+            <>
+              <b>{srcName}</b> から → <b>終点をクリック</b>（既に繋がっていれば切断）
+            </>
+          ) : (
+            <>始点のタスクをクリック</>
+          )}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function CanvasArea() {
   const tasks = useApp((s) => s.tasks);
   const dependencies = useApp((s) => s.dependencies);
   const viewSpec = useApp((s) => s.viewSpec);
   const cpHighlight = useApp((s) => s.cpHighlight);
+  const connectMode = useApp((s) => s.connectMode);
   const focus = viewSpec.focus;
   const rf = useReactFlow();
   const dragSrc = useRef<string | null>(null);
@@ -129,12 +160,28 @@ export function CanvasArea() {
   // 俯瞰（全集約）ならグリッド整列した表示用ノードを使う（座標差し替えは集約のみ・非永続）。
   const displayNodes = useMemo(() => gridPackOverview(derived.visibleNodes), [derived]);
 
+  // 通電エフェクト: 直前に接続したエッジを一時的に「energized」にして電撃アニメを走らせる。
+  const lastConnected = useApp((s) => s.lastConnected);
+  const [energized, setEnergized] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!lastConnected) return;
+    setEnergized((prev) => new Set(prev).add(lastConnected.id));
+    const t = setTimeout(() => {
+      setEnergized((prev) => {
+        const n = new Set(prev);
+        n.delete(lastConnected.id);
+        return n;
+      });
+    }, 950);
+    return () => clearTimeout(t);
+  }, [lastConnected]);
+
   const [nodes, setNodes] = useState<Node<RFNodeData>[]>(() => toRFNodes(displayNodes));
-  const [edges, setEdges] = useState<Edge[]>(() => toRFEdges(derived.visibleEdges));
+  const [edges, setEdges] = useState<Edge[]>(() => toRFEdges(derived.visibleEdges, energized));
   useEffect(() => {
     setNodes(toRFNodes(displayNodes));
-    setEdges(toRFEdges(derived.visibleEdges));
-  }, [derived, displayNodes]);
+    setEdges(toRFEdges(derived.visibleEdges, energized));
+  }, [derived, displayNodes, energized]);
 
   // フィルタ/前後/表示モードが変わったら、結果へ滑らかに自動フィット（余白に迷子にならない）。
   // タスク編集では発火しない（フィルタ状態のキーだけを監視）。
@@ -227,6 +274,10 @@ export function CanvasArea() {
   const onNodeDoubleClick = useCallback((_e: unknown, node: Node) => {
     if (node.id.startsWith('wbs::')) useApp.getState().expandAggregate(node.id);
     else useApp.getState().setEditing(node.id);
+  }, []);
+  // つなぐモード中のノードクリック＝接続/切断（通常の選択より優先）。
+  const onNodeClick = useCallback((_e: unknown, node: Node) => {
+    if (useApp.getState().connectMode) useApp.getState().connectClick(node.id);
   }, []);
   const onPaneDbl = useCallback(
     (e: React.MouseEvent) => {
@@ -346,7 +397,8 @@ export function CanvasArea() {
           s.setExpandLevel(3);
           break;
         case 'Escape':
-          s.escape();
+          if (s.connectMode) s.toggleConnectMode(); // つなぐモードを最優先で終了
+          else s.escape();
           break;
       }
     };
@@ -356,8 +408,9 @@ export function CanvasArea() {
 
   const st = derived.stats;
   return (
-    <div className="canvas-area" onDoubleClick={onPaneDbl}>
+    <div className={'canvas-area' + (connectMode ? ' connect-mode' : '')} onDoubleClick={onPaneDbl}>
       {focus ? <FocusBar /> : null}
+      <ConnectBar />
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -372,6 +425,7 @@ export function CanvasArea() {
         onSelectionChange={onSelectionChange}
         onNodesDelete={onNodesDelete}
         onEdgesDelete={onEdgesDelete}
+        onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
         onlyRenderVisibleElements
         snapToGrid

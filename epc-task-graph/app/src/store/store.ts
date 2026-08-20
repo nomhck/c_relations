@@ -138,6 +138,9 @@ export interface AppState {
   dirty: DirtyState;
   runners: Runners;
   cpHighlight: boolean; // CP強調トグル（§2.11/§9.2）。非永続・Undo対象外
+  connectMode: boolean; // 「つなぐモード」: クリックで依存を接続/切断（トラックパッド向けの直感操作）
+  connectSource: string | null; // つなぐモードで選んだ始点タスクID
+  lastConnected: { id: string; at: number } | null; // 直前に接続した依存ID（通電エフェクト用・非永続）
   projectList: ProjectMeta[]; // 複数プロジェクト一覧（§6.1）
 
   // ---- 多ビュー表示状態（§12.2・Undo対象外・Dexie非永続）----
@@ -186,6 +189,9 @@ export interface AppState {
   quickMyTasks: () => void;
   quickCriticalOnly: () => void;
   toggleCpHighlight: () => void;
+  // ---- つなぐモード（クリックで接続/切断）----
+  toggleConnectMode: () => void;
+  connectClick: (id: string) => void; // モード中にノードをクリックした時の処理
   // ---- 保存ビュー（§2.8/§12.3.8 PR-T2④）----
   saveCurrentView: (name: string) => void; // 現在のフィルタ/表示/折り畳み/テーブル状態を保存
   applyView: (id: string) => void; // 保存ビューを適用
@@ -397,6 +403,9 @@ export const useApp = create<AppState>()(
       dirty: { tasks: new Set(), deps: new Set(), deletedTasks: new Set(), deletedDeps: new Set() },
       runners: {},
       cpHighlight: false,
+      connectMode: false,
+      connectSource: null,
+      lastConnected: null,
       projectList: [],
       activeView: initialActiveView(),
       tableSort: [],
@@ -516,6 +525,7 @@ export const useApp = create<AppState>()(
         set((s) => {
           s.dependencies.push(dep);
           s.dirty.deps.add(dep.id);
+          s.lastConnected = { id: dep.id, at: Date.now() }; // 通電エフェクトのトリガ
         });
         scheduleSave();
         return true;
@@ -754,6 +764,51 @@ export const useApp = create<AppState>()(
         set((s) => {
           s.cpHighlight = !s.cpHighlight;
         }),
+
+      // ---- つなぐモード（クリックで接続/切断・トラックパッド向けの直感操作）----
+      toggleConnectMode: () => {
+        const on = !get().connectMode;
+        set((s) => {
+          s.connectMode = on;
+          s.connectSource = null;
+        });
+        get().showToast(
+          on ? 'つなぐモード: 始点→終点の順にクリック（もう一度で切断・Escで終了）' : 'つなぐモードを終了しました',
+        );
+      },
+      connectClick: (id) => {
+        const s = get();
+        if (!s.connectMode) return;
+        if (id.startsWith('wbs::')) {
+          s.showToast('集約ノードは接続できません。展開してから', true);
+          return;
+        }
+        const src = s.connectSource;
+        if (!src) {
+          // 始点を選ぶ。
+          set((st) => {
+            st.connectSource = id;
+            st.selection = { taskId: id, edgeId: null, aggId: null };
+          });
+          return;
+        }
+        if (src === id) {
+          // 始点を再クリック＝選び直し（解除）。
+          set((st) => {
+            st.connectSource = null;
+          });
+          return;
+        }
+        // 既に src→id があれば切断、なければ接続（循環は addDependencyChecked が拒否）。
+        const existing = s.dependencies.find((d) => d.predecessorId === src && d.successorId === id);
+        if (existing) {
+          s.deleteDeps([existing.id]);
+          s.showToast('依存を切断しました（Cmd+Z で戻せます）');
+        } else {
+          if (s.addDependencyChecked(src, id)) s.showToast('依存を接続しました');
+        }
+        // 始点は保持＝A→B, A→C と連続で繋げる。
+      },
 
       // ---- 保存ビュー（§2.8/§12.3.8 PR-T2④）----
       saveCurrentView: (name) => {

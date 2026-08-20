@@ -19,7 +19,8 @@ export function toRFNodes(vnodes: VisibleNode[]): Node<RFNodeData>[] {
   }));
 }
 
-export function toRFEdges(vedges: VisibleEdge[]): Edge[] {
+// energized: 直前に「つなぐ」で接続したエッジの realId 集合。通電エフェクト用に className を付す。
+export function toRFEdges(vedges: VisibleEdge[], energized?: Set<string> | null): Edge[] {
   return vedges.map((e) => ({
     id: e.id,
     source: e.source,
@@ -27,6 +28,7 @@ export function toRFEdges(vedges: VisibleEdge[]): Edge[] {
     type: 'smoothstep',
     deletable: !e.aggregate,
     data: { realId: e.realId, aggregate: e.aggregate },
+    className: energized && (energized.has(e.realId ?? '') || energized.has(e.id)) ? 'energized' : undefined,
     label: e.aggregate && e.count > 1 ? String(e.count) : undefined,
     // クリティカル（駆動依存）は赤系太線で最優先強調（§2.11）。次いでフォーカス強調。
     style: e.critical

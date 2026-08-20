@@ -14,13 +14,16 @@ export const TaskNode = memo(function TaskNode({ id, data }: NodeProps) {
   const zoom = useRFStore((s) => s.transform[2]);
   const editing = useApp((s) => s.editingId === id);
   const selected = useApp((s) => s.selection.taskId === id);
+  const connectSrc = useApp((s) => s.connectSource === id); // つなぐモードの始点
   const lod = zoom < 0.4;
   const color = DISC_COLOR[t.discipline] || DISC_COLOR.OTHER;
 
   if (lod && !editing) {
     return (
       <div
-        className={'lod-node' + (n.critical ? ' critical' : '') + (n.related ? ' related' : '')}
+        className={
+          'lod-node' + (n.critical ? ' critical' : '') + (n.related ? ' related' : '') + (connectSrc ? ' connect-src' : '')
+        }
         style={{ background: color, opacity: n.dim ? 0.18 : n.outside ? 0.5 : 1 }}
       >
         <Handle type="target" position={Position.Left} />
@@ -37,6 +40,7 @@ export const TaskNode = memo(function TaskNode({ id, data }: NodeProps) {
     n.isOrigin ? 'origin' : '',
     n.related ? 'related' : '',
     n.critical ? 'critical' : '',
+    connectSrc ? 'connect-src' : '',
     selected ? 'sel' : '',
   ]
     .filter(Boolean)
