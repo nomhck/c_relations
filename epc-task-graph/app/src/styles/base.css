@@ -53,6 +53,8 @@ body {
 }
 
 .header {
+  position: relative;
+  z-index: 50; /* backdrop-filter が作る重なり文脈をビュー領域より前面へ（ドロップダウンの潜り込み防止） */
   background: var(--header-bg);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
