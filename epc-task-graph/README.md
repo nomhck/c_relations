@@ -2,6 +2,7 @@
 
 EPCプロジェクト（設計/調達/施工）のタスク依存関係をノードグラフ上で編集する社内Webツール。
 設計書は [`../docs/epc-task-graph-design.md`](../docs/epc-task-graph-design.md)。
+デザイン原則（見た目・操作の判断基準）は [`../docs/design-principles.md`](../docs/design-principles.md)。**新UIを足す前に必読。**
 
 - **`mock/`** — Phase 0（ゼロ設定モック・単一HTML）。下記「Phase 0」参照。
 - **`app/`** — Phase 1 ローカルMVP（Vite + React18 + TypeScript）。下記「Phase 1」参照。
