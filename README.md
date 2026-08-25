@@ -59,7 +59,8 @@ npx playwright test  # e2e（3）
 
 ## 構成
 ```
-docs/epc-task-graph-design.md      設計書（source of truth・全11章）
+docs/epc-task-graph-design.md      設計書 v2.0（最終設計・source of truth）
+docs/design-principles.md          デザイン原則（新UI前に必読）
 epc-task-graph/
   mock/index.html                  Phase 0 ゼロ設定モック（単一HTML）
   app/                             Vite + React18 + TypeScript 本体
