@@ -399,6 +399,57 @@
   50% { box-shadow: 0 0 0 6px rgba(34, 211, 238, 0); }
 }
 
+/* 接続の瞬間、起点で電撃が弾ける（閃光＋衝撃波リングが2枚ぶわっと拡がる） */
+.task-node.burst,
+.lod-node.burst {
+  z-index: 12;
+  animation: burstFlash 0.3s ease-out;
+}
+@keyframes burstFlash {
+  0% {
+    box-shadow:
+      0 0 0 2px #22d3ee,
+      0 0 22px 6px rgba(34, 211, 238, 0.95),
+      0 0 40px 14px rgba(103, 232, 249, 0.6);
+    filter: brightness(1.4);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0);
+    filter: brightness(1);
+  }
+}
+/* 衝撃波リング（弾ける）: ::before/::after を2枚、時間差で拡大しながら消える */
+.task-node.burst::before,
+.task-node.burst::after,
+.lod-node.burst::before,
+.lod-node.burst::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 2px solid #22d3ee;
+  pointer-events: none;
+  animation: burstRing 0.6s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.task-node.burst::before {
+  border-radius: 10px;
+}
+.task-node.burst::after,
+.lod-node.burst::after {
+  animation-delay: 0.11s;
+  border-color: #a5f3fc;
+}
+@keyframes burstRing {
+  0% {
+    transform: scale(1);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
 /* 通電エフェクト: 接続直後のエッジに電撃（電流が流れる＋発光） */
 .react-flow__edge.energized .react-flow__edge-path {
   stroke: #22d3ee !important;

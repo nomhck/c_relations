@@ -15,6 +15,7 @@ export const TaskNode = memo(function TaskNode({ id, data }: NodeProps) {
   const editing = useApp((s) => s.editingId === id);
   const selected = useApp((s) => s.selection.taskId === id);
   const connectSrc = useApp((s) => s.connectSource === id); // つなぐモードの始点
+  const burst = useApp((s) => s.burstSource === id); // 接続の瞬間、起点で電撃が弾ける
   const lod = zoom < 0.4;
   const color = DISC_COLOR[t.discipline] || DISC_COLOR.OTHER;
 
@@ -22,7 +23,11 @@ export const TaskNode = memo(function TaskNode({ id, data }: NodeProps) {
     return (
       <div
         className={
-          'lod-node' + (n.critical ? ' critical' : '') + (n.related ? ' related' : '') + (connectSrc ? ' connect-src' : '')
+          'lod-node' +
+          (n.critical ? ' critical' : '') +
+          (n.related ? ' related' : '') +
+          (connectSrc ? ' connect-src' : '') +
+          (burst ? ' burst' : '')
         }
         style={{ background: color, opacity: n.dim ? 0.18 : n.outside ? 0.5 : 1 }}
       >
@@ -41,6 +46,7 @@ export const TaskNode = memo(function TaskNode({ id, data }: NodeProps) {
     n.related ? 'related' : '',
     n.critical ? 'critical' : '',
     connectSrc ? 'connect-src' : '',
+    burst ? 'burst' : '',
     selected ? 'sel' : '',
   ]
     .filter(Boolean)

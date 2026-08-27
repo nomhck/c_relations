@@ -43,6 +43,9 @@ test('つなぐモード: クリックで接続→通電エフェクト→もう
 
   // 通電エフェクト: energized エッジが一時的に現れる。
   await expect(page.locator('.react-flow__edge.energized')).toHaveCount(1);
+  // 起点で電撃が弾ける: burstSource が起点(A)にセットされる（一瞬）。
+  const burst = await page.evaluate((p) => (window as any).__APP.getState().burstSource === p[0], ids);
+  expect(burst).toBe(true);
 
   // 同じ A→B をもう一度クリックで切断（始点は保持されているので B を押すだけ）。
   await nodeB.click();

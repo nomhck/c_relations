@@ -141,6 +141,7 @@ export interface AppState {
   connectMode: boolean; // 「つなぐモード」: クリックで依存を接続/切断（トラックパッド向けの直感操作）
   connectSource: string | null; // つなぐモードで選んだ始点タスクID
   lastConnected: { id: string; at: number } | null; // 直前に接続した依存ID（通電エフェクト用・非永続）
+  burstSource: string | null; // 直前の接続の起点タスクID（起点で電撃が弾ける演出用・一瞬だけ）
   projectList: ProjectMeta[]; // 複数プロジェクト一覧（§6.1）
 
   // ---- 多ビュー表示状態（§12.2・Undo対象外・Dexie非永続）----
@@ -406,6 +407,7 @@ export const useApp = create<AppState>()(
       connectMode: false,
       connectSource: null,
       lastConnected: null,
+      burstSource: null,
       projectList: [],
       activeView: initialActiveView(),
       tableSort: [],
@@ -526,7 +528,15 @@ export const useApp = create<AppState>()(
           s.dependencies.push(dep);
           s.dirty.deps.add(dep.id);
           s.lastConnected = { id: dep.id, at: Date.now() }; // 通電エフェクトのトリガ
+          s.burstSource = source; // 起点で電撃が弾ける演出のトリガ
         });
+        // バースト演出はワンショット。約650ms後に起点フラグを消す（まだ同じ起点なら）。
+        setTimeout(() => {
+          if (get().burstSource === source)
+            set((s) => {
+              s.burstSource = null;
+            });
+        }, 650);
         scheduleSave();
         return true;
       },
