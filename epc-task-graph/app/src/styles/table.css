@@ -262,7 +262,7 @@
 }
 .st-badge.st-NOT_STARTED {
   background: #f1f5f9;
-  color: #64748b;
+  color: #475569; /* WCAG AA 6.9（旧#64748bは4.34でAA割れ） */
   border-color: #e2e8f0;
 }
 .st-badge.st-IN_PROGRESS {

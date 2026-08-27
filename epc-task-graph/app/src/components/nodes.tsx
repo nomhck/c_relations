@@ -5,7 +5,7 @@
 import { memo } from 'react';
 import { Handle, Position, useStore as useRFStore, type NodeProps } from '@xyflow/react';
 import { DISC_COLOR } from '../adapters/reactflow';
-import type { VisibleAggregateNode, VisibleTaskNode } from '../domain';
+import { DISC_COLOR_ON, type VisibleAggregateNode, type VisibleTaskNode } from '../domain';
 import { useApp } from '../store/store';
 
 export const TaskNode = memo(function TaskNode({ id, data }: NodeProps) {
@@ -128,7 +128,7 @@ export const AggregateNode = memo(function AggregateNode({ id, data }: NodeProps
   const total = n.count || 1;
   const expand = () => useApp.getState().expandAggregate(id);
   const dom = dominantDiscipline(n.disc);
-  const domColor = DISC_COLOR[dom];
+  const domColor = DISC_COLOR_ON[dom]; // ヘッダは白文字が乗るため AA 安全版
   const seg = (c: number, key: string) =>
     c > 0 ? (
       <span key={key} style={{ width: (c / total) * 100 + '%', background: DISC_COLOR[key as 'E'] }} />

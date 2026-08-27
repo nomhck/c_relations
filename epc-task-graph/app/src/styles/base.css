@@ -13,9 +13,10 @@
   --border-strong: #d8d8de;
   --ink: #1d1d1f; /* Apple ニアブラック */
   --muted: #6e6e73; /* Apple セカンダリ */
-  --faint: #86868b; /* さらに淡いラベル */
-  --accent: #0071e3; /* Apple ブルー */
+  --faint: #6a6a6e; /* 淡いラベル（WCAG AA: 白5.4/灰5.0）。旧#86868bはAA割れのため調整 */
+  --accent: #0071e3; /* Apple ブルー（ソリッド地・白文字は AA OK） */
   --accent-hover: #0077ed;
+  --accent-text: #0060c9; /* accent色の"文字"用（accent-weak地でもAA 5.25）。文字は必ずこちら */
   --accent-weak: #e9f1fd;
   --ctl-bg: #f1f1f4; /* 控えめなコントロール地 */
   --ctl-hover: #e7e7ec;
@@ -150,7 +151,7 @@ input {
 }
 .btn.on {
   background: var(--accent-weak);
-  color: var(--accent);
+  color: var(--accent-text);
   box-shadow: inset 0 0 0 1px rgba(0, 113, 227, 0.18);
 }
 .savebadge {
@@ -160,7 +161,7 @@ input {
   font-weight: 600;
 }
 .savebadge.saved {
-  color: #1a8f4a;
+  color: #167c40; /* WCAG AA 5.26（旧#1a8f4aは4.14でAA割れ） */
 }
 .savebadge.dirty {
   color: #b25000;
@@ -253,7 +254,7 @@ input {
 .chip.on {
   background: var(--accent-weak);
   border-color: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   box-shadow: inset 0 0 0 1px rgba(0, 113, 227, 0.18);
   font-weight: 500;
 }
