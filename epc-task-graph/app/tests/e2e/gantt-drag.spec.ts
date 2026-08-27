@@ -25,7 +25,11 @@ test('ガント: バー右端をドラッグして所要日数を伸ばす', asy
   await expect(page.getByTestId('gantt-scroll')).toBeVisible();
   expect(await durOf(page, id)).toBe(5);
 
-  // 対象行のハンドルを +24px（dayWidth=4 → +6日）ドラッグ → dur 5+6=11。
+  // 日幅は自動フィットで変動するため、バー実測幅（dur5=バー幅）から「1日あたりのpx」を逆算し、
+  // +6日ぶんの距離をドラッグ → dur 5+6=11。
+  const bar = page.locator(`.gantt-track[data-id="${id}"] .gantt-bar`).first();
+  const barBox = (await bar.boundingBox())!;
+  const pxPerDay = barBox.width / 5;
   const handle = page.locator(`.gantt-track[data-id="${id}"] .gantt-bar-handle`);
   await expect(handle).toBeVisible();
   const box = (await handle.boundingBox())!;
@@ -33,7 +37,7 @@ test('ガント: バー右端をドラッグして所要日数を伸ばす', asy
   const cy = box.y + box.height / 2;
   await page.mouse.move(cx, cy);
   await page.mouse.down();
-  await page.mouse.move(cx + 24, cy, { steps: 6 });
+  await page.mouse.move(cx + pxPerDay * 6, cy, { steps: 8 });
   await page.mouse.up();
 
   await expect.poll(async () => await durOf(page, id)).toBe(11);

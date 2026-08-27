@@ -24,16 +24,17 @@ function dayOffset(dateStr: string, base: string): number {
   return Math.round((Date.parse(dateStr) - Date.parse(base)) / MS_DAY);
 }
 
-// 月初の目盛り（yyyy-mm ラベル）を [0, maxOff] の範囲で列挙。
-function monthTicks(dataDate: string, maxOff: number): { off: number; label: string }[] {
+// 月初の目盛り（yyyy-mm ラベル）を [fromOff, toOff] の範囲で列挙（表示中の期間に合わせる）。
+function monthTicks(dataDate: string, fromOff: number, toOff: number): { off: number; label: string }[] {
   const ticks: { off: number; label: string }[] = [];
-  const d = new Date(dataDate + 'T00:00:00Z');
-  d.setUTCDate(1);
-  for (let i = 0; i < 1200; i++) {
+  const start = new Date(dataDate + 'T00:00:00Z');
+  start.setUTCDate(start.getUTCDate() + fromOff);
+  const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  for (let i = 0; i < 2400; i++) {
     const iso = d.toISOString().slice(0, 10);
     const off = dayOffset(iso, dataDate);
-    if (off > maxOff) break;
-    if (off >= 0) ticks.push({ off, label: iso.slice(0, 7) });
+    if (off > toOff) break;
+    if (off >= fromOff) ticks.push({ off, label: iso.slice(0, 7) });
     d.setUTCMonth(d.getUTCMonth() + 1);
   }
   return ticks;
@@ -47,8 +48,9 @@ export function GanttView({ active }: { active: boolean }) {
   const cpHighlight = useApp((s) => s.cpHighlight);
   const tableSort = useApp((s) => s.tableSort);
   const selection = useApp((s) => s.selection);
-  const [dayWidth, setDayWidth] = useState(4);
+  const [manualDayWidth, setManualDayWidth] = useState<number | null>(null); // null=自動フィット
   const [showDeps, setShowDeps] = useState(true); // 依存矢印の表示トグル
+  const [paneW, setPaneW] = useState(800); // 右ペイン幅（自動フィット計算用）
 
   const cpm = useCpm();
   const augSpec = useMemo(
@@ -60,16 +62,51 @@ export function GanttView({ active }: { active: boolean }) {
     [tasks, dependencies, augSpec, tableSort, cpm],
   );
 
-  // 時間ドメイン: dataDate(=0) 〜 全タスクの最遅 EF。
-  const maxOff = useMemo(() => {
-    let m = 1;
-    for (const r of cpm.byTask.values()) if (r.ef > m) m = r.ef;
-    return m;
-  }, [cpm]);
-  const timelineW = Math.max(200, (maxOff + 2) * dayWidth);
-  const ticks = useMemo(() => monthTicks(dataDate, maxOff), [dataDate, maxOff]);
+  // 時間ドメインは「表示中の行」の日付範囲に絞る（全体15,000日でなく、見えているタスクの期間へズーム）。
+  const range = useMemo(() => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const r of rows) {
+      if (r.kind === 'task') {
+        const c = cpm.byTask.get(r.id);
+        if (c) {
+          if (c.es < lo) lo = c.es;
+          if (c.ef > hi) hi = c.ef;
+        }
+      } else if (r.esMin && r.efMax) {
+        const es = dayOffset(r.esMin, dataDate);
+        const ef = dayOffset(r.efMax, dataDate);
+        if (es < lo) lo = es;
+        if (ef > hi) hi = ef;
+      }
+    }
+    if (lo === Infinity) return { lo: 0, hi: 30 };
+    return { lo, hi };
+  }, [rows, cpm, dataDate]);
+
+  const originOff = Math.floor(range.lo) - 2; // 左に少し余白
+  const spanDays = Math.max(14, range.hi - originOff + 4);
+  // 自動フィット日幅: 表示中の期間がペインに収まる倍率（手動ズーム時はそれを優先）。
+  const autoDayW = Math.min(28, Math.max(2, (paneW - 24) / spanDays));
+  const dayWidth = manualDayWidth ?? autoDayW;
+  const timelineW = Math.max(200, spanDays * dayWidth);
+  const ticks = useMemo(
+    () => monthTicks(dataDate, originOff, originOff + spanDays),
+    [dataDate, originOff, spanDays],
+  );
 
   const parentRef = useRef<HTMLDivElement>(null); // 右ペイン（縦横スクロール・仮想化の親）
+
+  // ペイン幅を実測して自動フィットに反映。
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const update = () => setPaneW(el.clientWidth || 800);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [active]);
   const leftInnerRef = useRef<HTMLDivElement>(null); // 左ペイン内側（縦スクロールを右に同期）
 
   const virtualizer = useVirtualizer({
@@ -132,22 +169,22 @@ export function GanttView({ active }: { active: boolean }) {
       const sc = cpm.byTask.get(dep.successorId);
       if (!pc || !sc) continue;
       // 先行バー終端 → 後続バー始端 をエルボー（直角）で結ぶ。矢印は後続の開始側に付く。
-      const x1 = pc.ef * dayWidth;
+      const x1 = (pc.ef - originOff) * dayWidth;
       const y1 = pt + ROW_HEIGHT / 2;
-      const x2 = sc.es * dayWidth;
+      const x2 = (sc.es - originOff) * dayWidth;
       const y2 = st + ROW_HEIGHT / 2;
       const ex = Math.max(x1 + 7, x2 - 7); // 一旦右へ出っ張ってから縦移動（重なり回避）
       const path = `M ${x1} ${y1} L ${ex} ${y1} L ${ex} ${y2} L ${x2} ${y2}`;
       out.push({ d: path, crit: cpm.criticalEdges.has(dep.id) });
     }
     return out;
-  }, [showDeps, virtualItems, rows, dependencies, cpm, dayWidth]);
+  }, [showDeps, virtualItems, rows, dependencies, cpm, dayWidth, originOff]);
 
   return (
     <div className="ganttview">
       <div className="gantt-toolbar">
         <span className="stat">
-          ガント：<b>{rows.length}</b> 行 · 期間 <b>{maxOff}</b> 日（基準日 {dataDate}）
+          ガント：<b>{rows.length}</b> 行 · 表示期間 <b>{Math.round(spanDays)}</b> 日
         </span>
         <span className="spacer" />
         <button
@@ -160,11 +197,27 @@ export function GanttView({ active }: { active: boolean }) {
         </button>
         <span className="gantt-zoom">
           日幅
-          <button className="btn" title="縮小" onClick={() => setDayWidth((w) => Math.max(1.5, w - 1))}>
+          <button
+            className="btn"
+            title="縮小"
+            onClick={() => setManualDayWidth((w) => Math.max(1.5, (w ?? dayWidth) - Math.max(0.5, dayWidth * 0.25)))}
+          >
             －
           </button>
-          <button className="btn" title="拡大" onClick={() => setDayWidth((w) => Math.min(16, w + 1))}>
+          <button
+            className="btn"
+            title="拡大"
+            onClick={() => setManualDayWidth((w) => Math.min(40, (w ?? dayWidth) + Math.max(0.5, dayWidth * 0.25)))}
+          >
             ＋
+          </button>
+          <button
+            className={'btn' + (manualDayWidth == null ? ' on' : '')}
+            title="表示中のタスク期間に自動フィット"
+            data-testid="gantt-fit"
+            onClick={() => setManualDayWidth(null)}
+          >
+            自動
           </button>
         </span>
       </div>
@@ -226,28 +279,28 @@ export function GanttView({ active }: { active: boolean }) {
         <div className="gantt-right" ref={parentRef} onScroll={onScroll} data-testid="gantt-scroll">
           <div className="gantt-axis" style={{ width: timelineW, height: HEAD_H }}>
             {ticks.map((t) => (
-              <div key={t.off} className="gantt-tick" style={{ left: t.off * dayWidth }}>
+              <div key={t.off} className="gantt-tick" style={{ left: (t.off - originOff) * dayWidth }}>
                 <span>{t.label}</span>
               </div>
             ))}
-            {/* 基準日ライン（§12.4: project.dataDate = オフセット0） */}
-            <div className="gantt-today" style={{ left: 0 }} title={'基準日 ' + dataDate} />
+            {/* 基準日ライン（project.dataDate = オフセット0）。表示範囲内の時だけ見える */}
+            <div className="gantt-today" style={{ left: (0 - originOff) * dayWidth }} title={'基準日 ' + dataDate} />
           </div>
 
           <div className="gantt-body" style={{ height: totalSize, width: timelineW }}>
             {/* 月グリッド線 */}
             {ticks.map((t) => (
-              <div key={t.off} className="gantt-grid" style={{ left: t.off * dayWidth }} />
+              <div key={t.off} className="gantt-grid" style={{ left: (t.off - originOff) * dayWidth }} />
             ))}
             {/* 依存矢印レイヤ（バーの下・表示中ペアのみ） */}
             {arrows.length ? (
               <svg className="gantt-deps" width={timelineW} height={totalSize}>
                 <defs>
-                  <marker id="gv-arrow" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
-                    <path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8" />
+                  <marker id="gv-arrow" markerWidth="6" markerHeight="6" refX="4.6" refY="2.5" orient="auto">
+                    <path d="M0,0 L5,2.5 L0,5 Z" fill="#cbd5e1" />
                   </marker>
-                  <marker id="gv-arrow-c" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
-                    <path d="M0,0 L6,3 L0,6 Z" fill="#ef4444" />
+                  <marker id="gv-arrow-c" markerWidth="6" markerHeight="6" refX="4.6" refY="2.5" orient="auto">
+                    <path d="M0,0 L5,2.5 L0,5 Z" fill="#fca5a5" />
                   </marker>
                 </defs>
                 {arrows.map((a, i) => (
@@ -270,6 +323,7 @@ export function GanttView({ active }: { active: boolean }) {
                   cpm={cpm.byTask.get(r.id) || null}
                   dataDate={dataDate}
                   dayWidth={dayWidth}
+                  originOff={originOff}
                   top={vi.start}
                   selected={r.id === selId}
                   odd={vi.index % 2 === 1}
@@ -289,6 +343,7 @@ function GanttBar({
   cpm,
   dataDate,
   dayWidth,
+  originOff,
   top,
   selected,
   odd,
@@ -298,6 +353,7 @@ function GanttBar({
   cpm: { es: number; ef: number; isCritical: boolean } | null;
   dataDate: string;
   dayWidth: number;
+  originOff: number;
   top: number;
   selected: boolean;
   odd: boolean;
@@ -338,7 +394,7 @@ function GanttBar({
   if (es == null || ef == null) return rowEl(null);
 
   const isMilestone = !isWbs && row.task?.isMilestone;
-  const x = es * dayWidth;
+  const x = (es - originOff) * dayWidth;
 
   if (isMilestone) {
     return rowEl(<div className="gantt-ms" style={{ left: x }} title={row.task!.name} />);
@@ -351,7 +407,7 @@ function GanttBar({
   const color = critical
     ? '#ef4444'
     : isWbs
-      ? '#94a3b8'
+      ? '#64748b' // WBSサマリは締まったスレート
       : DISC_COLOR[row.task!.discipline] || DISC_COLOR.OTHER;
   const progress = !isWbs ? row.task!.progress : (row.avgProgress ?? 0);
 
