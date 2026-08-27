@@ -5,6 +5,7 @@ import { LeftPanel } from './LeftPanel';
 import { RightPanel } from './RightPanel';
 import { ViewShell } from './ViewShell';
 import { SearchPalette } from './SearchPalette';
+import { Onboarding } from './Onboarding';
 
 function Toasts() {
   const toast = useApp((s) => s.toast);
@@ -32,6 +33,7 @@ export function App() {
         </div>
         <Toasts />
         <SearchPalette />
+        <Onboarding />
       </div>
     </ReactFlowProvider>
   );
