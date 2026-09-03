@@ -1037,7 +1037,8 @@ export const useApp = create<AppState>()(
         }
       },
       generateDemo: () => {
-        const doc = seedDemo({ count: 4000, density: 1.5 });
+        // density は seedDemo の既定（1.15＝実プロジェクトに近い疎密度）を使う。過密にしない。
+        const doc = seedDemo({ count: 4000 });
         get().loadDoc(doc);
         get().fit(200);
         get().showToast(
