@@ -210,7 +210,7 @@ styles/    機能別CSS（base/nodes/panels/graph-extra/table/gantt/search）
 | `filter` | フィルタ判定（AND結合・`@me`展開）。 |
 | `wbs` | WBSツリー構築・自然順比較・プレフィックス判定。 |
 | `validate` | 意味検証（ID一意・参照整合・DAG・milestone/progress 制約）。 |
-| `seed` | 決定的乱数（mulberry32）による4,000ノードデモ生成。 |
+| `seed` | 決定的乱数（mulberry32）による4,000ノードデモ生成。**実プロジェクトに近い疎密度**（担当・依存を工区内に集中）で、「まず絞る」の効果が一目で伝わるようにする。性能受入は密度1.5を明示指定。 |
 | `mspdi` | MS Project XML の往復（`toMspdi`/`fromMspdi`）。 |
 
 ---
