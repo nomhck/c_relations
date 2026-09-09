@@ -1,39 +1,47 @@
-import { test, expect } from '@playwright/test';
-
-// 初回オンボーディング。自動テスト(navigator.webdriver=true)では出さない＝既存フローを妨げない。
-test('オンボーディング: 自動テスト環境では表示されない（既存操作を妨げない）', async ({ page }) => {
-  await page.goto('/');
-  await page.waitForFunction(() => !!(window as any).__APP);
-  // Playwright は navigator.webdriver=true なので出ない。
-  await expect(page.getByTestId('onboarding')).toHaveCount(0);
+import { test, expect } from "@playwright/test";
+test("初回からサンプル工程の概要を確認できる", async ({ page }) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "プロジェクト概要", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "工程の見通し" }),
+  ).toBeVisible();
 });
-
-test('オンボーディング: webdriverを偽装すると表示され、担当選択で自分のスライスへ', async ({ browser }) => {
-  const ctx = await browser.newContext();
-  await ctx.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => false });
-  });
-  const page = await ctx.newPage();
-  await page.goto('/');
-  await page.waitForFunction(() => !!(window as any).__APP);
-
-  await expect(page.getByTestId('onboarding')).toBeVisible();
-  // 担当を入力して「始める」→ 担当ISOLATE＋前後1（自分のタスク相当）が効く。
-  await page.getByTestId('onboard-dept').fill('設計1課');
-  await page.getByTestId('onboard-start').click();
-  await expect(page.getByTestId('onboarding')).toHaveCount(0);
-  const st = await page.evaluate(() => {
-    const s = (window as any).__APP.getState();
-    return { me: s.me, disc: s.viewSpec.filter.assignees, mode: s.viewSpec.displayMode, bu: s.viewSpec.boundaryUp };
-  });
-  expect(st.me).toBe('設計1課');
-  expect(st.disc).toEqual(['@me']);
-  expect(st.mode).toBe('ISOLATE');
-  expect(st.bu).toBe(1);
-
-  // 再訪では出ない（localStorage フラグ）。
-  await page.reload();
-  await page.waitForFunction(() => !!(window as any).__APP);
-  await expect(page.getByTestId('onboarding')).toHaveCount(0);
-  await ctx.close();
+test("担当を設定して、自分の工程へ移動できる", async ({ page }) => {
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "ワークスペース設定", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "プロジェクト設定" });
+  await dialog.getByLabel("あなたの担当部署").fill("設計1課");
+  await dialog.getByRole("button", { name: "変更を保存" }).click();
+  await page.getByRole("button", { name: "自分のタスク", exact: true }).click();
+  await expect(page.getByTestId("filter-banner")).toContainText("設計1課");
+  await expect(page.getByTestId("table-scroll")).toBeVisible();
+});
+test("追加したタスクの工期変更はプレビューを確認してから適用する", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "タスクを追加", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "タスクを追加" });
+  await dialog.getByLabel("タスク名").fill("E2E 工期確認");
+  await dialog
+    .getByRole("button", { name: "タスクを追加", exact: true })
+    .click();
+  await expect(page.locator(".redesigned-inspector h2")).toHaveText(
+    "E2E 工期確認",
+  );
+  await page
+    .getByRole("spinbutton", { name: "所要日数", exact: true })
+    .fill("15");
+  await expect(
+    page.getByText("変更を適用するまで、工程は更新されません。"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "変更を適用", exact: true }).click();
+  await expect(
+    page.getByText("変更を適用するまで、工程は更新されません。"),
+  ).toHaveCount(0);
 });

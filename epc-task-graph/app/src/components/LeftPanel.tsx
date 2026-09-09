@@ -1,7 +1,8 @@
+import { DISC_LABEL, STATUS_LABEL } from "../domain/insights";
 // 左パネル（§2.8）: 私は誰・組込みビュー・フィルタ（DIM/ISOLATE）・展開レベル・稼働カレンダー・統計・凡例。
-import { useMemo, useState } from 'react';
-import { useApp, selectActiveCalendar } from '../store/store';
-import { useCpm } from '../store/useCpm';
+import { useMemo, useState } from "react";
+import { useApp, selectActiveCalendar } from "../store/store";
+import { useCpm } from "../store/useCpm";
 import {
   deriveVisibleGraph,
   naturalWbsCompare,
@@ -10,7 +11,7 @@ import {
   DISC_COLOR,
   type GraphFilter,
   type Task,
-} from '../domain';
+} from "../domain";
 
 // WBSツリーパネル（§1.3/§2.7）: WBS階層を折り畳み可能なツリーで表示。ラベルクリックでその
 // サブツリーに絞り込み（wbsPrefixes フィルタ・トグル）。件数付き。ナビの主役の一つ。
@@ -23,14 +24,14 @@ function buildWbsCountTree(tasks: Task[]): WbsNode[] {
   const count = new Map<string, number>();
   const childSet = new Map<string, Set<string>>(); // 親prefix（''=ルート）→子prefix集合
   for (const t of tasks) {
-    const segs = (t.wbsCode || '')
-      .split('.')
+    const segs = (t.wbsCode || "")
+      .split(".")
       .map((x) => x.trim())
       .filter(Boolean);
-    let path = '';
-    let parent = '';
+    let path = "";
+    let parent = "";
     for (const seg of segs) {
-      path = path ? path + '.' + seg : seg;
+      path = path ? path + "." + seg : seg;
       count.set(path, (count.get(path) ?? 0) + 1);
       if (!childSet.has(parent)) childSet.set(parent, new Set());
       childSet.get(parent)!.add(path);
@@ -40,8 +41,12 @@ function buildWbsCountTree(tasks: Task[]): WbsNode[] {
   const build = (prefix: string): WbsNode[] =>
     [...(childSet.get(prefix) ?? [])]
       .sort(naturalWbsCompare)
-      .map((p) => ({ prefix: p, count: count.get(p) ?? 0, children: build(p) }));
-  return build('');
+      .map((p) => ({
+        prefix: p,
+        count: count.get(p) ?? 0,
+        children: build(p),
+      }));
+  return build("");
 }
 
 function WbsTreePanel() {
@@ -60,41 +65,48 @@ function WbsTreePanel() {
     });
   const clickNode = (p: string) => {
     const cur = useApp.getState().viewSpec.filter.wbsPrefixes ?? [];
-    if (cur.length === 1 && cur[0] === p) useApp.getState().setFilter({ wbsPrefixes: undefined });
+    if (cur.length === 1 && cur[0] === p)
+      useApp.getState().setFilter({ wbsPrefixes: undefined });
     else useApp.getState().setFilter({ wbsPrefixes: [p] });
   };
   const renderNode = (node: WbsNode, depth: number): React.ReactNode => (
     <div key={node.prefix}>
-      <div className={'wbs-tree-row' + (active.has(node.prefix) ? ' active' : '')}>
+      <div
+        className={"wbs-tree-row" + (active.has(node.prefix) ? " active" : "")}
+      >
         {node.children.length ? (
           <button
             className="wbs-tree-tog"
             onClick={() => toggle(node.prefix)}
-            title={expanded.has(node.prefix) ? '折り畳み' : '展開'}
+            title={expanded.has(node.prefix) ? "折り畳み" : "展開"}
           >
-            {expanded.has(node.prefix) ? '▾' : '▸'}
+            {expanded.has(node.prefix) ? "▾" : "▸"}
           </button>
         ) : (
           <span className="wbs-tree-tog empty" />
         )}
-        <span
+        <button
+          type="button"
           className="wbs-tree-label"
           style={{ paddingLeft: depth * 4 }}
           title="このWBSで絞り込み（再クリックで解除）"
           data-prefix={node.prefix}
           onClick={() => clickNode(node.prefix)}
         >
-          <span className="mono">{node.prefix}</span> <span className="muted">({node.count})</span>
-        </span>
+          <span className="mono">{node.prefix}</span>{" "}
+          <span className="muted">({node.count})</span>
+        </button>
       </div>
-      {expanded.has(node.prefix) ? node.children.map((c) => renderNode(c, depth + 1)) : null}
+      {expanded.has(node.prefix)
+        ? node.children.map((c) => renderNode(c, depth + 1))
+        : null}
     </div>
   );
 
   if (!tree.length) return null;
   return (
     <>
-      <h3>WBSツリー（§2.7）</h3>
+      <h3>WBSツリー</h3>
       <div className="wbs-tree" data-testid="wbs-tree">
         {tree.map((n) => renderNode(n, 0))}
       </div>
@@ -106,23 +118,24 @@ function WbsTreePanel() {
 function SavedViews() {
   const views = useApp((s) => s.savedViews);
   const defaultViewId = useApp((s) => s.defaultViewId);
-  const [name, setName] = useState('');
+  const [name, setName] = useState("");
   const save = () => {
     useApp.getState().saveCurrentView(name);
-    setName('');
+    setName("");
   };
   return (
     <>
-      <h3>保存ビュー（§2.8）</h3>
+      <h3>保存した表示</h3>
       <div className="row">
         <input
+          aria-label="保存する表示の名前"
           className="sv-input"
           placeholder="現在のビューを保存…"
           value={name}
           data-testid="saveview-name"
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') save();
+            if (e.key === "Enter") save();
           }}
         />
         <button className="btn" data-testid="saveview-btn" onClick={save}>
@@ -135,11 +148,15 @@ function SavedViews() {
             <div className="sv-item" key={v.id}>
               {/* ★＝起動時に自動適用する既定ビュー（実用化: 毎回"自分の入口"で開く） */}
               <span
-                className={'sv-star' + (defaultViewId === v.id ? ' on' : '')}
-                title={defaultViewId === v.id ? '既定ビュー（起動時に自動適用）' : '既定ビューにする（起動時に自動適用）'}
+                className={"sv-star" + (defaultViewId === v.id ? " on" : "")}
+                title={
+                  defaultViewId === v.id
+                    ? "既定ビュー（起動時に自動適用）"
+                    : "既定ビューにする（起動時に自動適用）"
+                }
                 onClick={() => useApp.getState().setDefaultView(v.id)}
               >
-                {defaultViewId === v.id ? '★' : '☆'}
+                {defaultViewId === v.id ? "★" : "☆"}
               </span>
               <span
                 className="name"
@@ -148,7 +165,11 @@ function SavedViews() {
               >
                 {v.name}
               </span>
-              <span className="x" title="削除" onClick={() => useApp.getState().deleteView(v.id)}>
+              <span
+                className="x"
+                title="削除"
+                onClick={() => useApp.getState().deleteView(v.id)}
+              >
                 ×
               </span>
             </div>
@@ -167,7 +188,7 @@ function SavedViews() {
 }
 
 // 稼働カレンダー編集（§9.1/Phase2）: 稼働曜日トグル＋祝日。土日も稼働日に設定できる。
-const WD_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+const WD_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 function CalendarEditor() {
   const cal = useApp(selectActiveCalendar);
   if (!cal) return null;
@@ -181,13 +202,21 @@ function CalendarEditor() {
   };
   return (
     <>
-      <h3>稼働カレンダー（§9.1）</h3>
+      <h3>稼働カレンダー</h3>
       <div className="row wd-row" data-testid="workingdays">
         {WD_LABELS.map((lbl, n) => (
           <button
             key={n}
-            className={'wd-btn' + (wd.has(n) ? ' on' : '') + (n === 0 || n === 6 ? ' weekend' : '')}
-            title={wd.has(n) ? '稼働日（クリックで非稼働に）' : '非稼働日（クリックで稼働に）'}
+            className={
+              "wd-btn" +
+              (wd.has(n) ? " on" : "") +
+              (n === 0 || n === 6 ? " weekend" : "")
+            }
+            title={
+              wd.has(n)
+                ? "稼働日（クリックで非稼働に）"
+                : "非稼働日（クリックで稼働に）"
+            }
             onClick={() => toggle(n)}
           >
             {lbl}
@@ -198,8 +227,8 @@ function CalendarEditor() {
         <label>祝日（1行1日・yyyy-mm-dd）</label>
         <textarea
           rows={2}
-          defaultValue={cal.holidays.join('\n')}
-          placeholder={'2026-05-03\n2026-05-04'}
+          defaultValue={cal.holidays.join("\n")}
+          placeholder={"2026-05-03\n2026-05-04"}
           onBlur={(e) => {
             const hs = e.target.value
               .split(/[\s,]+/)
@@ -213,7 +242,7 @@ function CalendarEditor() {
   );
 }
 
-type ArrayFilterKey = 'disciplines' | 'statuses';
+type ArrayFilterKey = "disciplines" | "statuses";
 
 export function LeftPanel() {
   const filter = useApp((s) => s.viewSpec.filter);
@@ -244,24 +273,34 @@ export function LeftPanel() {
   );
 
   const chip = (key: ArrayFilterKey, val: string, label: string) => (
-    <span
+    <button
+      type="button"
+      aria-pressed={((filter[key] as string[] | undefined) || []).includes(val)}
       key={val}
-      className={'chip' + (((filter[key] as string[] | undefined) || []).includes(val) ? ' on' : '')}
+      className={
+        "chip" +
+        (((filter[key] as string[] | undefined) || []).includes(val)
+          ? " on"
+          : "")
+      }
       onClick={() => useApp.getState().toggleArrayFilter(key, val)}
     >
       {label}
-    </span>
+    </button>
   );
 
   return (
     <div className="panel">
       <h3 className="panel-title">絞り込み</h3>
       <div className="row">
-        <button className="btn" onClick={() => useApp.getState().quickMyTasks()}>
+        <button
+          className="btn"
+          onClick={() => useApp.getState().quickMyTasks()}
+        >
           自分のタスク
         </button>
         <button
-          className={'btn' + (viewSpec.filter.criticalOnly ? ' on' : '')}
+          className={"btn" + (viewSpec.filter.criticalOnly ? " on" : "")}
           onClick={() => useApp.getState().quickCriticalOnly()}
           title="クリティカルパス上のタスクだけを抽出（§2.8）"
         >
@@ -270,7 +309,11 @@ export function LeftPanel() {
         <button
           className="btn"
           onClick={() =>
-            useApp.getState().setFilter({ milestonesOnly: !filter.milestonesOnly } as Partial<GraphFilter>)
+            useApp
+              .getState()
+              .setFilter({
+                milestonesOnly: !filter.milestonesOnly,
+              } as Partial<GraphFilter>)
           }
         >
           マイルストーン
@@ -278,14 +321,25 @@ export function LeftPanel() {
       </div>
 
       {/* 前後の受け渡しを何世代まで文脈に含めるか（担当＋前後ビューの深さ調節・§2.9拡張） */}
-      <div className="boundary" data-testid="boundary" title="絞り込んだタスクの前後（受け渡し先）を何世代まで一緒に表示するか">
+      <div
+        className="boundary"
+        data-testid="boundary"
+        title="絞り込んだタスクの前後（受け渡し先）を何世代まで一緒に表示するか"
+      >
         <span className="boundary-label">受け渡しも表示</span>
         <span className="boundary-step">
           前
           <button
             className="stepbtn"
             aria-label="前の世代を減らす"
-            onClick={() => useApp.getState().setBoundary((viewSpec.boundaryUp || 0) - 1, viewSpec.boundaryDown || 0)}
+            onClick={() =>
+              useApp
+                .getState()
+                .setBoundary(
+                  (viewSpec.boundaryUp || 0) - 1,
+                  viewSpec.boundaryDown || 0,
+                )
+            }
           >
             −
           </button>
@@ -293,7 +347,14 @@ export function LeftPanel() {
           <button
             className="stepbtn"
             aria-label="前の世代を増やす"
-            onClick={() => useApp.getState().setBoundary((viewSpec.boundaryUp || 0) + 1, viewSpec.boundaryDown || 0)}
+            onClick={() =>
+              useApp
+                .getState()
+                .setBoundary(
+                  (viewSpec.boundaryUp || 0) + 1,
+                  viewSpec.boundaryDown || 0,
+                )
+            }
           >
             ＋
           </button>
@@ -303,7 +364,14 @@ export function LeftPanel() {
           <button
             className="stepbtn"
             aria-label="後の世代を減らす"
-            onClick={() => useApp.getState().setBoundary(viewSpec.boundaryUp || 0, (viewSpec.boundaryDown || 0) - 1)}
+            onClick={() =>
+              useApp
+                .getState()
+                .setBoundary(
+                  viewSpec.boundaryUp || 0,
+                  (viewSpec.boundaryDown || 0) - 1,
+                )
+            }
           >
             −
           </button>
@@ -311,7 +379,14 @@ export function LeftPanel() {
           <button
             className="stepbtn"
             aria-label="後の世代を増やす"
-            onClick={() => useApp.getState().setBoundary(viewSpec.boundaryUp || 0, (viewSpec.boundaryDown || 0) + 1)}
+            onClick={() =>
+              useApp
+                .getState()
+                .setBoundary(
+                  viewSpec.boundaryUp || 0,
+                  (viewSpec.boundaryDown || 0) + 1,
+                )
+            }
           >
             ＋
           </button>
@@ -321,18 +396,24 @@ export function LeftPanel() {
       {/* 主要フィルタ（工種・状態・担当）だけ常時表示。細かい条件は詳細設定へ。 */}
       <div className="field">
         <label>工種</label>
-        <div className="row">{DISCIPLINES.map((d) => chip('disciplines', d, d))}</div>
+        <div className="row">
+          {DISCIPLINES.map((d) => chip("disciplines", d, DISC_LABEL[d]))}
+        </div>
       </div>
       <div className="field">
         <label>ステータス</label>
-        <div className="row">{STATUSES.map((s) => chip('statuses', s, s.replace('_', ' ')))}</div>
+        <div className="row">
+          {STATUSES.map((s) => chip("statuses", s, STATUS_LABEL[s]))}
+        </div>
       </div>
       <div className="field">
         <label>担当</label>
         <select
-          value={(filter.assignees && filter.assignees[0]) || ''}
+          value={(filter.assignees && filter.assignees[0]) || ""}
           onChange={(e) =>
-            useApp.getState().setFilter({ assignees: e.target.value ? [e.target.value] : [] })
+            useApp
+              .getState()
+              .setFilter({ assignees: e.target.value ? [e.target.value] : [] })
           }
         >
           <option value="">（すべて）</option>
@@ -360,15 +441,15 @@ export function LeftPanel() {
         data-testid="details-toggle"
         onClick={() => setShowDetails((v) => !v)}
       >
-        {showDetails ? '▾' : '▸'} 詳細設定
+        {showDetails ? "▾" : "▸"} 詳細設定
       </button>
       {showDetails ? (
         <div className="details-body" data-testid="details-body">
-          <h3>私は誰（updatedBy / @me）</h3>
+          <h3>あなたの担当部署</h3>
           <input
             value={me}
             onChange={(e) => useApp.getState().setMe(e.target.value)}
-            style={{ width: '100%', padding: '4px 6px' }}
+            style={{ width: "100%", padding: "4px 6px" }}
           />
 
           <h3>詳細フィルタ</h3>
@@ -376,48 +457,57 @@ export function LeftPanel() {
             <label>WBSプレフィックス</label>
             <input
               placeholder="例 1.2"
-              value={(filter.wbsPrefixes && filter.wbsPrefixes[0]) || ''}
+              value={(filter.wbsPrefixes && filter.wbsPrefixes[0]) || ""}
               onChange={(e) =>
-                useApp.getState().setFilter({ wbsPrefixes: e.target.value ? [e.target.value.trim()] : [] })
+                useApp
+                  .getState()
+                  .setFilter({
+                    wbsPrefixes: e.target.value ? [e.target.value.trim()] : [],
+                  })
               }
             />
           </div>
           <div className="field">
             <label>テキスト検索</label>
             <input
-              placeholder="名前/notes"
-              value={filter.text || ''}
-              onChange={(e) => useApp.getState().setFilter({ text: e.target.value })}
+              placeholder="タスク名・メモ"
+              value={filter.text || ""}
+              onChange={(e) =>
+                useApp.getState().setFilter({ text: e.target.value })
+              }
             />
           </div>
           <div className="row">
             <span>表示モード:</span>
             <button
-              className={'btn' + (displayMode === 'DIM' ? ' on' : '')}
-              onClick={() => useApp.getState().setDisplayMode('DIM')}
+              className={"btn" + (displayMode === "DIM" ? " on" : "")}
+              onClick={() => useApp.getState().setDisplayMode("DIM")}
             >
-              DIM減光
+              周囲を薄く表示
             </button>
             <button
-              className={'btn' + (displayMode === 'ISOLATE' ? ' on' : '')}
-              onClick={() => useApp.getState().setDisplayMode('ISOLATE')}
+              className={"btn" + (displayMode === "ISOLATE" ? " on" : "")}
+              onClick={() => useApp.getState().setDisplayMode("ISOLATE")}
             >
-              ISOLATE抽出
+              一致するものだけ
             </button>
           </div>
 
-          <h3>WBS展開レベル（§2.7）</h3>
+          <h3>WBSの表示階層</h3>
           <div className="row">
             {[1, 2, 3].map((n) => (
               <button
                 key={n}
-                className={'btn' + (expandLevel === n ? ' on' : '')}
+                className={"btn" + (expandLevel === n ? " on" : "")}
                 onClick={() => useApp.getState().setExpandLevel(n)}
               >
                 Lv{n}
               </button>
             ))}
-            <button className="btn" onClick={() => useApp.getState().collapseAll()}>
+            <button
+              className="btn"
+              onClick={() => useApp.getState().collapseAll()}
+            >
               全折り畳み
             </button>
           </div>

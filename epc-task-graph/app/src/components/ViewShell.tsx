@@ -1,30 +1,38 @@
+import { STATUS_LABEL } from "../domain/insights";
+import { Icon } from "./workspace/Icon";
 // ============================================================================
 // View Shell（§12.2）: グラフ/テーブル/ガント(disabled) のタブ＋器。
 // マウント戦略: 非アクティブ側は display:none で常駐（レイアウト計算が止まり最軽量。
 //   ビューポート/スクロール位置/選択が保たれる）。復帰時に fitView は呼ばない。
 // 選択・フィルタ・折り畳みはストア共有状態なので「同期は基本なにもしない」で成立する。
 // ============================================================================
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useApp } from '../store/store';
-import { isFilterActive, matchesFilter, type ActiveView } from '../domain';
-import { useCpm } from '../store/useCpm';
-import { CanvasArea } from './CanvasArea';
-import { TableView } from './table/TableView';
-import { GanttView } from './gantt/GanttView';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useApp } from "../store/store";
+import { isFilterActive, matchesFilter, type ActiveView } from "../domain";
+import { useCpm } from "../store/useCpm";
+import { CanvasArea } from "./CanvasArea";
+import { TableView } from "./table/TableView";
+import { GanttView } from "./gantt/GanttView";
 
 // フィルタ状態バナー（何で絞っているかを一目で・件数つき・ワンクリック解除）。
 // 「filter したものだけを分かりやすく」の中核: 今の絞り込みを言語化して常に見せる。
 function describeFilter(f: any, me: string): string[] {
   const parts: string[] = [];
   if (f.assignees?.length) {
-    const a = f.assignees[0] === '@me' ? `自分（${me}）` : f.assignees[0];
-    parts.push('担当: ' + a);
+    const a = f.assignees[0] === "@me" ? `自分（${me}）` : f.assignees[0];
+    parts.push("担当: " + a);
   }
-  if (f.criticalOnly) parts.push('クリティカルパス');
-  if (f.milestonesOnly) parts.push('マイルストーン');
-  if (f.disciplines?.length) parts.push('工種: ' + f.disciplines.join('・'));
-  if (f.statuses?.length) parts.push('状態: ' + f.statuses.map((s: string) => s.replace('_', ' ')).join('・'));
-  if (f.wbsPrefixes?.length) parts.push('WBS: ' + f.wbsPrefixes.join('・'));
+  if (f.criticalOnly) parts.push("クリティカルパス");
+  if (f.milestonesOnly) parts.push("マイルストーン");
+  if (f.disciplines?.length) parts.push("工種: " + f.disciplines.join("・"));
+  if (f.statuses?.length)
+    parts.push(
+      "状態: " +
+        f.statuses
+          .map((s: string) => STATUS_LABEL[s as keyof typeof STATUS_LABEL])
+          .join("・"),
+    );
+  if (f.wbsPrefixes?.length) parts.push("WBS: " + f.wbsPrefixes.join("・"));
   if (f.text?.trim()) parts.push(`検索「${f.text.trim()}」`);
   return parts;
 }
@@ -39,7 +47,8 @@ function FilterBanner() {
   const matched = useMemo(() => {
     if (!active) return 0;
     let n = 0;
-    for (const t of tasks) if (matchesFilter(t, viewSpec.filter, me, cpm.criticalTasks)) n++;
+    for (const t of tasks)
+      if (matchesFilter(t, viewSpec.filter, me, cpm.criticalTasks)) n++;
     return n;
   }, [active, tasks, viewSpec.filter, me, cpm]);
 
@@ -49,13 +58,13 @@ function FilterBanner() {
   const bu = viewSpec.boundaryUp || 0;
   const bd = viewSpec.boundaryDown || 0;
   if (active && (bu || bd)) parts.push(`受け渡し 前${bu}/後${bd}`);
-  if (focus) parts.push('近傍フォーカス中');
+  if (focus) parts.push("近傍フォーカス中");
 
   return (
     <div className="filter-banner" data-testid="filter-banner">
       <span className="fb-dot" />
       <span className="fb-label">絞り込み中</span>
-      <span className="fb-desc">{parts.join(' ・ ')}</span>
+      <span className="fb-desc">{parts.join(" ・ ")}</span>
       {active ? (
         <span className="fb-count" data-testid="filter-count">
           {matched}件
@@ -83,14 +92,15 @@ function HelpButton() {
   useEffect(() => {
     if (!open) return;
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('mousedown', h);
-    document.addEventListener('keydown', esc);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", h);
+    document.addEventListener("keydown", esc);
     return () => {
-      document.removeEventListener('mousedown', h);
-      document.removeEventListener('keydown', esc);
+      document.removeEventListener("mousedown", h);
+      document.removeEventListener("keydown", esc);
     };
   }, [open]);
   return (
@@ -107,33 +117,60 @@ function HelpButton() {
         <div className="help-pop" data-testid="help-pop">
           <h4>まず絞る → それから見る</h4>
           <p className="help-lead">
-            4,000件を一度に見るのは非現実的です。<b>担当・工区・CPで絞ってから</b>グラフ／テーブル
+            4,000件を一度に見るのは非現実的です。
+            <b>担当・工区・CPで絞ってから</b>グラフ／テーブル
             ／ガントで確認するのが実運用の基本です。
           </p>
           <div className="help-sec">絞り込み（左パネル）</div>
           <ul>
-            <li><b>自分のタスク</b> … 自分の部署だけ抽出</li>
-            <li><b>CPのみ</b> … 遅れると全体が遅れる背骨だけ</li>
-            <li><b>WBSツリー</b> … 工区（枝）をクリックでその範囲だけ</li>
-            <li><b>保存ビュー ★</b> … よく使う絞り込みを起動時に自動適用</li>
+            <li>
+              <b>自分のタスク</b> … 自分の部署だけ抽出
+            </li>
+            <li>
+              <b>CPのみ</b> … 遅れると全体が遅れる背骨だけ
+            </li>
+            <li>
+              <b>WBSツリー</b> … 工区（枝）をクリックでその範囲だけ
+            </li>
+            <li>
+              <b>保存ビュー ★</b> … よく使う絞り込みを起動時に自動適用
+            </li>
           </ul>
           <div className="help-sec">3つのビュー</div>
           <ul>
-            <li><b>グラフ（G）</b> … 依存関係を編集。ハンドルからドラッグで接続</li>
-            <li><b>テーブル（T）</b> … 一覧・並べ替え・一括編集</li>
-            <li><b>ガント（Y）</b> … 時間軸。バー右端ドラッグで工期変更</li>
+            <li>
+              <b>グラフ（G）</b> … 依存関係を編集。ハンドルからドラッグで接続
+            </li>
+            <li>
+              <b>テーブル（T）</b> … 一覧・並べ替え・一括編集
+            </li>
+            <li>
+              <b>ガント（Y）</b> … 時間軸。バー右端ドラッグで工期変更
+            </li>
           </ul>
           <div className="help-sec">主なキー操作</div>
           <ul className="help-keys">
-            <li><kbd>G</kbd>/<kbd>T</kbd>/<kbd>Y</kbd> ビュー切替</li>
-            <li><kbd>⌘/Ctrl</kbd>+<kbd>K</kbd> 検索してジャンプ</li>
-            <li><kbd>H</kbd> 選択タスクの関係先をハイライト（世代指定可）</li>
-            <li><kbd>N</kbd> 新規タスク ／ <kbd>Tab</kbd> 後続を作成</li>
-            <li><kbd>Delete</kbd> 削除 ／ <kbd>⌘/Ctrl</kbd>+<kbd>Z</kbd> 取り消し</li>
+            <li>
+              <kbd>G</kbd>/<kbd>T</kbd>/<kbd>Y</kbd> ビュー切替
+            </li>
+            <li>
+              <kbd>⌘/Ctrl</kbd>+<kbd>K</kbd> 検索してジャンプ
+            </li>
+            <li>
+              <kbd>H</kbd> 選択タスクの関係先をハイライト（世代指定可）
+            </li>
+            <li>
+              <kbd>N</kbd> 新規タスク ／ <kbd>Tab</kbd> 後続を作成
+            </li>
+            <li>
+              <kbd>Delete</kbd> 削除 ／ <kbd>⌘/Ctrl</kbd>+<kbd>Z</kbd> 取り消し
+            </li>
           </ul>
           <div className="help-sec">データ</div>
           <ul>
-            <li><b>データ ▾</b> … JSON / MS Project(MSPDI) の出力・取込</li>
+            <li>
+              <b>データ ▾</b> … JSON / MS Project(MSPDI) の出力・取込
+            </li>
           </ul>
         </div>
       ) : null}
@@ -155,11 +192,14 @@ function Tab({
   const active = useApp((s) => s.activeView === view);
   return (
     <button
-      className={'viewtab' + (active ? ' active' : '')}
+      aria-pressed={active}
+      className={"viewtab" + (active ? " active" : "")}
       disabled={disabled}
-      data-testid={'viewtab-' + view}
+      data-testid={"viewtab-" + view}
       onClick={() => !disabled && useApp.getState().setActiveView(view)}
-      title={disabled ? 'Phase 3 で提供予定' : hint ? `${label}（${hint}）` : label}
+      title={
+        disabled ? "Phase 3 で提供予定" : hint ? `${label}（${hint}）` : label
+      }
     >
       {label}
       {hint ? <span className="viewtab-key">{hint}</span> : null}
@@ -170,10 +210,11 @@ function Tab({
 
 export function ViewShell() {
   const activeView = useApp((s) => s.activeView);
+  const critical = useApp((s) => s.cpHighlight);
 
   // グラフへ復帰した時: 選択対象を必ず見せる（祖先WBS展開＋センタリング）。§12.2。
   useEffect(() => {
-    if (activeView !== 'graph') return;
+    if (activeView !== "graph") return;
     const s = useApp.getState();
     if (s.selection.taskId) {
       s.revealTask(s.selection.taskId);
@@ -184,7 +225,7 @@ export function ViewShell() {
 
   // テーブルへ復帰した時: 折り畳み中の祖先を展開（スクロール追従は TableView 側）。
   useEffect(() => {
-    if (activeView !== 'table') return;
+    if (activeView !== "table") return;
     const s = useApp.getState();
     if (s.selection.taskId) s.revealTask(s.selection.taskId);
   }, [activeView]);
@@ -194,45 +235,89 @@ export function ViewShell() {
   // 編集中（input/textarea/select/contentEditable）と修飾キー併用時は無効。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector("dialog[open]")) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement;
-      const tag = (el.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable) return;
-      if (e.key === 'g' || e.key === 'G') {
+      const tag = (el.tagName || "").toLowerCase();
+      if (
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        el.isContentEditable
+      )
+        return;
+      if (e.key === "g" || e.key === "G") {
         e.preventDefault();
-        useApp.getState().setActiveView('graph');
-      } else if (e.key === 't' || e.key === 'T') {
+        useApp.getState().setActiveView("graph");
+      } else if (e.key === "t" || e.key === "T") {
         e.preventDefault();
-        useApp.getState().setActiveView('table');
-      } else if (e.key === 'y' || e.key === 'Y') {
+        useApp.getState().setActiveView("table");
+      } else if (e.key === "y" || e.key === "Y") {
         e.preventDefault();
-        useApp.getState().setActiveView('gantt');
+        useApp.getState().setActiveView("gantt");
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   return (
     <div className="viewshell">
       <div className="viewtabs-bar">
         <div className="viewtabs">
-          <Tab view="graph" label="グラフ" hint="G" />
-          <Tab view="table" label="テーブル" hint="T" />
+          <Tab view="graph" label="依存関係" hint="G" />
+          <Tab view="table" label="タスク一覧" hint="T" />
           <Tab view="gantt" label="ガント" hint="Y" />
         </div>
-        <HelpButton />
+        <div className="view-toolbar-actions">
+          <select
+            className="graph-density"
+            aria-label="工程の表示階層"
+            defaultValue=""
+            onChange={(e) => {
+              if (e.target.value === "group") useApp.getState().collapseAll();
+              else if (e.target.value === "all")
+                useApp.getState().setExpandLevel(99);
+              e.target.value = "";
+            }}
+          >
+            <option value="" disabled>
+              表示階層
+            </option>
+            <option value="group">工区ごとにまとめる</option>
+            <option value="all">タスクをすべて展開</option>
+          </select>
+          <button
+            className={"btn critical-toggle" + (critical ? " on" : "")}
+            aria-pressed={critical}
+            data-testid="cp-toggle"
+            onClick={() => useApp.getState().toggleCpHighlight()}
+          >
+            <Icon name="graph" size={15} />
+            クリティカルパス
+          </button>
+          <HelpButton />
+        </div>
       </div>
       <FilterBanner />
       <div className="viewstack">
-        <div className="view-pane" style={{ display: activeView === 'graph' ? 'flex' : 'none' }}>
+        <div
+          className="view-pane"
+          style={{ display: activeView === "graph" ? "flex" : "none" }}
+        >
           <CanvasArea />
         </div>
-        <div className="view-pane" style={{ display: activeView === 'table' ? 'flex' : 'none' }}>
-          <TableView active={activeView === 'table'} />
+        <div
+          className="view-pane"
+          style={{ display: activeView === "table" ? "flex" : "none" }}
+        >
+          <TableView active={activeView === "table"} />
         </div>
-        <div className="view-pane" style={{ display: activeView === 'gantt' ? 'flex' : 'none' }}>
-          <GanttView active={activeView === 'gantt'} />
+        <div
+          className="view-pane"
+          style={{ display: activeView === "gantt" ? "flex" : "none" }}
+        >
+          <GanttView active={activeView === "gantt"} />
         </div>
       </div>
     </div>

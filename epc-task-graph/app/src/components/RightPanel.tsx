@@ -1,11 +1,17 @@
-// 右パネル（§2.9）: 属性フォーム＋依存（先行/後続）＋WBS（親/兄弟）＋CPM欄（ES/EF/LS/LF/TF）。
-import { useMemo, useState } from 'react';
-import { useApp } from '../store/store';
-import { useCpm } from '../store/useCpm';
-import { DISCIPLINES, STATUSES, wbsPath, type Dependency, type Task } from '../domain';
+import { useMemo, useState } from "react";
+import { useApp, selectActiveCalendar } from "../store/store";
+import { useCpm } from "../store/useCpm";
+import {
+  computeCpm,
+  DISCIPLINES,
+  STATUSES,
+  type Dependency,
+  type Task,
+} from "../domain";
+import { DISC_LABEL, STATUS_LABEL, shortDate } from "../domain/insights";
+import { Icon } from "./workspace/Icon";
+import { Dialog } from "./workspace/Dialog";
 
-// 依存追加コンボボックス（§2.9 第二経路・ユーザー要望③）: 名前/WBSで検索し候補をクリックで接続。
-// 追加は addDependencyChecked 経由なので循環は自動拒否（トースト）。グラフのドラッグ接続の代替GUI。
 function DepAdder({
   label,
   exclude,
@@ -15,260 +21,542 @@ function DepAdder({
   exclude: Set<string>;
   onPick: (id: string) => boolean;
 }) {
-  const tasks = useApp((s) => s.tasks);
-  const [q, setQ] = useState('');
-  const results = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return [];
-    const out: Task[] = [];
-    for (const t of tasks) {
-      if (exclude.has(t.id)) continue;
-      if ((t.name + ' ' + t.wbsCode).toLowerCase().includes(s)) {
-        out.push(t);
-        if (out.length >= 8) break;
-      }
-    }
-    return out;
-  }, [q, tasks, exclude]);
+  const tasks = useApp((s) => s.tasks),
+    [q, setQ] = useState("");
+  const results = useMemo(
+    () =>
+      q.trim()
+        ? tasks
+            .filter(
+              (t) =>
+                !exclude.has(t.id) &&
+                `${t.name} ${t.wbsCode}`
+                  .toLowerCase()
+                  .includes(q.trim().toLowerCase()),
+            )
+            .slice(0, 8)
+        : [],
+    [q, tasks, exclude],
+  );
   return (
     <div className="depadder">
       <input
         className="depadder-input"
+        aria-label={label}
         placeholder={label}
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
-      {results.length ? (
+      {q.trim() && (
         <div className="depadder-list">
           {results.map((t) => (
-            <div
+            <button
               key={t.id}
               className="depadder-item"
               onClick={() => {
-                if (onPick(t.id)) setQ('');
+                if (onPick(t.id)) setQ("");
               }}
             >
-              <span className="mono">{t.wbsCode || '—'}</span> {t.name || '（無題）'}
-            </div>
+              <span className="mono">{t.wbsCode || "—"}</span>
+              {t.name}
+            </button>
           ))}
+          {!results.length && (
+            <p className="dep-empty">該当するタスクがありません</p>
+          )}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
-
-export function RightPanel() {
-  const task = useApp((s) => s.tasks.find((t) => t.id === s.selection.taskId));
-  const deps = useApp((s) => s.dependencies);
-  const tasks = useApp((s) => s.tasks);
-  const cpm = useCpm();
-
-  if (!task)
-    return (
-      <div className="panel right">
-        <h3>タスク未選択</h3>
-        <p className="stat">ノードをクリックすると属性・依存を編集できます。</p>
-      </div>
-    );
-
-  const upd = (patch: Partial<Task>) => useApp.getState().updateTask(task.id, patch);
-  const preds = deps.filter((d) => d.successorId === task.id);
-  const succs = deps.filter((d) => d.predecessorId === task.id);
-  const byId = new Map(tasks.map((t) => [t.id, t]));
-  const siblings = tasks.filter((t) => t.wbsCode === task.wbsCode && t.id !== task.id);
-
-  const depItem = (d: Dependency, otherId: string) => (
-    <div className="depitem" key={d.id}>
-      <span className="name" onClick={() => useApp.getState().setSelection({ taskId: otherId })}>
-        {byId.get(otherId)?.name || otherId.slice(0, 6)}
-      </span>
-      {/* 依存タイプ（FS/SS/FF/SF）とラグ（負=リード）を編集＝CPM に即反映（§9.1/Phase2） */}
-      <select
-        className="deptype"
-        title="依存タイプ"
-        value={d.type}
-        onChange={(e) => useApp.getState().updateDep(d.id, { type: e.target.value as Dependency['type'] })}
-      >
-        <option value="FS">FS</option>
-        <option value="SS">SS</option>
-        <option value="FF">FF</option>
-        <option value="SF">SF</option>
-      </select>
-      <input
-        className="deplag"
-        type="number"
-        title="ラグ日（負=リード）"
-        value={d.lagDays}
-        onChange={(e) =>
-          useApp.getState().updateDep(d.id, { lagDays: Math.round(Number(e.target.value) || 0) })
-        }
-      />
-      <span className="x" title="依存削除" onClick={() => useApp.getState().deleteDeps([d.id])}>
-        ×
-      </span>
+function DurationEditor({ task }: { task: Task }) {
+  const tasks = useApp((s) => s.tasks),
+    deps = useApp((s) => s.dependencies),
+    date = useApp((s) => s.project.dataDate),
+    calendar = useApp(selectActiveCalendar),
+    current = useCpm();
+  const [draft, setDraft] = useState(String(task.durationDays));
+  const days = Number(draft),
+    valid =
+      draft !== "" && Number.isInteger(days) && days >= 0 && days <= 10000,
+    changed = valid && days !== task.durationDays && !task.isMilestone;
+  const forecast = useMemo(
+    () =>
+      changed
+        ? computeCpm(
+            tasks.map((t) =>
+              t.id === task.id ? { ...t, durationDays: days } : t,
+            ),
+            deps,
+            date,
+            calendar,
+          )
+        : null,
+    [changed, days, tasks, deps, date, calendar, task.id],
+  );
+  const delta = forecast ? forecast.projectEnd - current.projectEnd : 0;
+  return (
+    <div className="duration-editor">
+      <label className="form-field">
+        所要日数（稼働日）
+        <div className="duration-control">
+          <input
+            type="number"
+            min={0}
+            max={10000}
+            step={1}
+            value={task.isMilestone ? 0 : draft}
+            disabled={task.isMilestone}
+            onChange={(e) => setDraft(e.target.value)}
+            aria-label="所要日数"
+          />
+          <span>日</span>
+        </div>
+      </label>
+      {!valid && (
+        <p className="form-error">0〜10,000の整数を入力してください。</p>
+      )}
+      {changed && forecast && (
+        <div
+          className={"impact-preview " + (delta > 0 ? "later" : "")}
+          role="status"
+        >
+          <div>
+            <Icon name="clock" />
+            <strong>プロジェクト完了日への影響</strong>
+          </div>
+          <p>
+            {shortDate(current.projectEndDate)}
+            <Icon name="arrow" size={14} />
+            <b>{shortDate(forecast.projectEndDate)}</b>
+            <span>
+              {delta > 0
+                ? `+${delta}日`
+                : delta < 0
+                  ? `${delta}日`
+                  : "変更なし"}
+            </span>
+          </p>
+          <small>変更を適用するまで、工程は更新されません。</small>
+          <div className="impact-actions">
+            <button
+              className="btn"
+              onClick={() => setDraft(String(task.durationDays))}
+            >
+              元に戻す
+            </button>
+            <button
+              className="btn primary"
+              onClick={() => {
+                useApp.getState().updateTask(task.id, { durationDays: days });
+                useApp
+                  .getState()
+                  .showToast(`所要日数を${days}日に更新しました`);
+              }}
+            >
+              変更を適用
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
-
-  return (
-    <div className="panel right">
-      <h3>属性</h3>
-      <div className="field">
-        <label>名前</label>
-        <input value={task.name} onChange={(e) => upd({ name: e.target.value })} />
-      </div>
-      <div className="field">
-        <label>WBSコード</label>
-        <input value={task.wbsCode} onChange={(e) => upd({ wbsCode: e.target.value })} />
-      </div>
-      <div className="row">
-        <div className="field" style={{ flex: 1 }}>
-          <label>工種</label>
-          <select value={task.discipline} onChange={(e) => upd({ discipline: e.target.value as Task['discipline'] })}>
-            {DISCIPLINES.map((d) => (
-              <option key={d}>{d}</option>
-            ))}
-          </select>
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label>ステータス</label>
-          <select value={task.status} onChange={(e) => upd({ status: e.target.value as Task['status'] })}>
-            {STATUSES.map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div className="row">
-        <div className="field" style={{ flex: 1 }}>
-          <label>進捗%</label>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            value={task.progress}
-            onChange={(e) => upd({ progress: Math.max(0, Math.min(100, +e.target.value || 0)) })}
-          />
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label>期間(日)</label>
-          <input
-            type="number"
-            min={0}
-            disabled={task.isMilestone}
-            value={task.durationDays}
-            onChange={(e) => upd({ durationDays: +e.target.value || 0 })}
-          />
-        </div>
-      </div>
-      <div className="field">
-        <label>担当</label>
-        <input value={task.assignee} onChange={(e) => upd({ assignee: e.target.value })} />
-      </div>
-      <div className="row">
+}
+export function RightPanel() {
+  const task = useApp((s) => s.tasks.find((t) => t.id === s.selection.taskId)),
+    tasks = useApp((s) => s.tasks),
+    deps = useApp((s) => s.dependencies),
+    cpm = useCpm();
+  const [tab, setTab] = useState<"details" | "relations" | "schedule">(
+      "details",
+    ),
+    [confirmDelete, setConfirmDelete] = useState(false);
+  if (!task) return null;
+  const upd = (patch: Partial<Task>) =>
+      useApp.getState().updateTask(task.id, patch),
+    preds = deps.filter((d) => d.successorId === task.id),
+    succs = deps.filter((d) => d.predecessorId === task.id),
+    byId = new Map(tasks.map((t) => [t.id, t])),
+    schedule = cpm.byTask.get(task.id);
+  const depItem = (d: Dependency, otherId: string) => (
+    <div className="relation-item" key={d.id}>
+      <button
+        className="relation-name"
+        onClick={() => useApp.getState().revealTask(otherId)}
+      >
+        <span
+          className={
+            "task-square " + (byId.get(otherId)?.discipline || "OTHER")
+          }
+        />
+        {byId.get(otherId)?.name || "タスク"}
+        <Icon name="chevron" size={14} />
+      </button>
+      <div className="relation-controls">
+        <select
+          aria-label="依存タイプ"
+          className="deptype"
+          value={d.type}
+          onChange={(e) =>
+            useApp
+              .getState()
+              .updateDep(d.id, { type: e.target.value as Dependency["type"] })
+          }
+        >
+          <option value="FS">完了 → 開始（FS）</option>
+          <option value="SS">開始 → 開始（SS）</option>
+          <option value="FF">完了 → 完了（FF）</option>
+          <option value="SF">開始 → 完了（SF）</option>
+        </select>
         <label>
+          間隔
           <input
-            type="checkbox"
-            checked={task.isMilestone}
-            onChange={(e) =>
-              upd({ isMilestone: e.target.checked, durationDays: e.target.checked ? 0 : task.durationDays })
-            }
-          />{' '}
-          マイルストーン
-        </label>
-      </div>
-      {/* 日付制約（§9.1/Phase2）: ASAP=なし / SNET=この日以降に開始 / FNLT=この日までに終了 */}
-      <div className="field">
-        <label>日付制約</label>
-        <div className="row">
-          <select
-            data-testid="constraint-type"
-            value={task.constraintType}
+            className="deplag"
+            aria-label="ラグ日数"
+            type="number"
+            value={d.lagDays}
             onChange={(e) => {
-              const ct = e.target.value as Task['constraintType'];
-              upd({ constraintType: ct, constraintDate: ct === 'ASAP' ? null : task.constraintDate });
+              const n = Number(e.target.value);
+              if (Number.isFinite(n))
+                useApp.getState().updateDep(d.id, { lagDays: n });
             }}
-          >
-            <option value="ASAP">なし（ASAP）</option>
-            <option value="SNET">SNET（以降に開始）</option>
-            <option value="FNLT">FNLT（までに終了）</option>
-          </select>
-          {task.constraintType !== 'ASAP' ? (
-            <input
-              data-testid="constraint-date"
-              type="date"
-              value={task.constraintDate || ''}
-              onChange={(e) => upd({ constraintDate: e.target.value || null })}
-            />
-          ) : null}
-        </div>
-      </div>
-      <div className="field">
-        <label>notes</label>
-        <textarea rows={2} value={task.notes} onChange={(e) => upd({ notes: e.target.value })} />
-      </div>
-
-      <h3>依存（先行/後続）</h3>
-      <div className="stat">先行（predecessors）</div>
-      {preds.length ? preds.map((d) => depItem(d, d.predecessorId)) : <div className="stat">— なし</div>}
-      <DepAdder
-        label="＋先行を追加（名前/WBSで検索）"
-        exclude={new Set([task.id, ...preds.map((d) => d.predecessorId)])}
-        onPick={(otherId) => useApp.getState().addDependencyChecked(otherId, task.id)}
-      />
-      <div className="stat" style={{ marginTop: 6 }}>
-        後続（successors）
-      </div>
-      {succs.length ? succs.map((d) => depItem(d, d.successorId)) : <div className="stat">— なし</div>}
-      <DepAdder
-        label="＋後続を追加（名前/WBSで検索）"
-        exclude={new Set([task.id, ...succs.map((d) => d.successorId)])}
-        onPick={(otherId) => useApp.getState().addDependencyChecked(task.id, otherId)}
-      />
-      <div className="row">
-        <button className="btn" onClick={() => useApp.getState().toggleFocus(task.id)}>
-          近傍フォーカス (H)
+          />
+          日
+        </label>
+        <button
+          className="icon-button"
+          aria-label="依存関係を削除"
+          title="接続を削除（取り消し可能）"
+          onClick={() => {
+            useApp.getState().deleteDeps([d.id]);
+            useApp
+              .getState()
+              .showToast("接続を削除しました。取り消しで戻せます");
+          }}
+        >
+          <Icon name="close" size={15} />
         </button>
       </div>
-
-      <h3>WBS（親/兄弟）</h3>
-      <div className="stat">パス: {wbsPath(task.wbsCode).join(' › ') || '（ルート）'}</div>
-      <div className="stat" style={{ marginTop: 4 }}>
-        兄弟タスク（{siblings.length}）
+    </div>
+  );
+  return (
+    <div className="panel right redesigned-inspector">
+      <div className="inspector-title">
+        <span className={"disc-letter " + task.discipline}>
+          {task.discipline}
+        </span>
+        <span>
+          {DISC_LABEL[task.discipline]}
+          <small>{task.wbsCode || "WBS未設定"}</small>
+        </span>
+        {schedule?.isCritical && (
+          <span className="critical-label">クリティカル</span>
+        )}
       </div>
-      {siblings.slice(0, 8).map((t) => (
-        <div className="depitem" key={t.id}>
-          <span className="name" onClick={() => useApp.getState().setSelection({ taskId: t.id })}>
-            {t.name}
-          </span>
-        </div>
-      ))}
-
-      <h3>CPM（暦日・FS/SS/FF/SF＋lag）</h3>
-      {(() => {
-        const r = cpm.byTask.get(task.id);
-        if (!r) return <div className="stat">—（未計算）</div>;
-        return (
+      <h2>{task.name || "名称未設定"}</h2>
+      <div
+        className="inspector-tabs"
+        role="tablist"
+        aria-label="タスク詳細の表示"
+      >
+        {(
+          [
+            ["details", "基本情報"],
+            ["relations", `つながり ${preds.length + succs.length}`],
+            ["schedule", "日程"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            role="tab"
+            key={id}
+            aria-selected={tab === id}
+            aria-controls={"inspector-" + id}
+            id={"inspector-tab-" + id}
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div
+        role="tabpanel"
+        id={"inspector-" + tab}
+        aria-labelledby={"inspector-tab-" + tab}
+      >
+        {tab === "details" && (
           <>
-            <div className="stat" data-testid="cpm-es">
-              ES <b>{r.esDate}</b>（+{r.es}d） · EF <b>{r.efDate}</b>（+{r.ef}d）
+            <label className="form-field">
+              タスク名
+              <input
+                value={task.name}
+                maxLength={160}
+                onChange={(e) => upd({ name: e.target.value })}
+              />
+            </label>
+            <div className="form-grid">
+              <label className="form-field">
+                ステータス
+                <select
+                  value={task.status}
+                  onChange={(e) =>
+                    upd({ status: e.target.value as Task["status"] })
+                  }
+                >
+                  {STATUSES.map((s) => (
+                    <option value={s} key={s}>
+                      {STATUS_LABEL[s]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-field">
+                工種
+                <select
+                  value={task.discipline}
+                  onChange={(e) =>
+                    upd({ discipline: e.target.value as Task["discipline"] })
+                  }
+                >
+                  {DISCIPLINES.map((d) => (
+                    <option value={d} key={d}>
+                      {DISC_LABEL[d]}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-            <div className="stat">
-              LS <b>{r.lsDate}</b>（+{r.ls}d） · LF <b>{r.lfDate}</b>（+{r.lf}d）
-            </div>
-            <div className="stat">
-              トータルフロート（TF）: <b>{r.totalFloat}日</b>{' '}
-              {r.isCritical ? (
-                <span style={{ color: '#dc2626', fontWeight: 700 }}>◆ クリティカル</span>
-              ) : r.totalFloat <= 5 ? (
-                <span style={{ color: '#d97706', fontWeight: 700 }}>準クリティカル</span>
-              ) : null}
-            </div>
+            <label className="form-field">
+              進捗
+              <span className="progress-control">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={task.progress}
+                  onChange={(e) => upd({ progress: Number(e.target.value) })}
+                />
+                <output>{task.progress}%</output>
+              </span>
+            </label>
+            <DurationEditor
+              key={`${task.id}-${task.durationDays}`}
+              task={task}
+            />
+            <label className="form-field">
+              担当部署
+              <input
+                value={task.assignee}
+                onChange={(e) => upd({ assignee: e.target.value })}
+                placeholder="担当を設定"
+                list="inspector-assignees"
+              />
+              <datalist id="inspector-assignees">
+                {[...new Set(tasks.map((t) => t.assignee).filter(Boolean))].map(
+                  (a) => (
+                    <option key={a} value={a} />
+                  ),
+                )}
+              </datalist>
+            </label>
+            <label className="form-field">
+              WBSコード
+              <input
+                value={task.wbsCode}
+                onChange={(e) => upd({ wbsCode: e.target.value })}
+                placeholder="例：1.1"
+              />
+            </label>
+            <label className="form-checkbox">
+              <input
+                type="checkbox"
+                checked={task.isMilestone}
+                onChange={(e) =>
+                  upd({
+                    isMilestone: e.target.checked,
+                    durationDays: e.target.checked ? 0 : 5,
+                  })
+                }
+              />
+              マイルストーン
+            </label>
+            <label className="form-field">
+              メモ
+              <textarea
+                rows={4}
+                value={task.notes}
+                onChange={(e) => upd({ notes: e.target.value })}
+                placeholder="確認事項や、次に取るアクションを記録"
+              />
+            </label>
           </>
-        );
-      })()}
-      <div className="meta-line" style={{ marginTop: 8 }}>
-        rev {task.rev} · 更新 {task.updatedBy} · {task.updatedAt.slice(0, 16).replace('T', ' ')}
+        )}
+        {tab === "relations" && (
+          <>
+            <div className="relation-heading">
+              <h3>先行タスク</h3>
+              <span>{preds.length}件</span>
+            </div>
+            {preds.length ? (
+              preds.map((d) => depItem(d, d.predecessorId))
+            ) : (
+              <p className="dep-empty">先行タスクはありません</p>
+            )}
+            <DepAdder
+              label="先行を追加（名前 / WBSで検索）"
+              exclude={new Set([task.id, ...preds.map((d) => d.predecessorId)])}
+              onPick={(id) =>
+                useApp.getState().addDependencyChecked(id, task.id)
+              }
+            />
+            <div className="relation-heading">
+              <h3>後続タスク</h3>
+              <span>{succs.length}件</span>
+            </div>
+            {succs.length ? (
+              succs.map((d) => depItem(d, d.successorId))
+            ) : (
+              <p className="dep-empty">後続タスクはありません</p>
+            )}
+            <DepAdder
+              label="後続を追加（名前 / WBSで検索）"
+              exclude={new Set([task.id, ...succs.map((d) => d.successorId)])}
+              onPick={(id) =>
+                useApp.getState().addDependencyChecked(task.id, id)
+              }
+            />
+            <button
+              className="btn relation-focus"
+              onClick={() => {
+                useApp.getState().setActiveView("graph");
+                useApp.getState().toggleFocus(task.id);
+              }}
+            >
+              <Icon name="graph" />
+              このタスクの前後を見る
+            </button>
+            <p className="inspector-help">
+              接続を追加すると日程が再計算されます。循環する依存関係は作成できません。
+            </p>
+          </>
+        )}
+        {tab === "schedule" && (
+          <>
+            <div className="schedule-cards">
+              <div data-testid="cpm-es" data-offset={schedule?.es}>
+                <span>開始予定</span>
+                <b>{schedule?.esDate || "—"}</b>
+              </div>
+              <div data-testid="cpm-ef" data-offset={schedule?.ef}>
+                <span>終了予定</span>
+                <b>{schedule?.efDate || "—"}</b>
+              </div>
+            </div>
+            <div
+              className={
+                "float-card " + (schedule?.isCritical ? "critical" : "")
+              }
+            >
+              <span>余裕日数</span>
+              <b>
+                {schedule?.totalFloat ?? "—"}
+                <small>日</small>
+              </b>
+              <p>
+                {schedule?.isCritical
+                  ? "この工程の延長は、プロジェクト完了日に影響する可能性があります。"
+                  : "この工程の開始を遅らせられる暦日数です。"}
+              </p>
+            </div>
+            <DurationEditor
+              key={`${task.id}-${task.durationDays}`}
+              task={task}
+            />
+            <label className="form-field">
+              日付制約
+              <select
+                data-testid="constraint-type"
+                value={task.constraintType}
+                onChange={(e) => {
+                  const ct = e.target.value as Task["constraintType"];
+                  upd({
+                    constraintType: ct,
+                    constraintDate: ct === "ASAP" ? null : task.constraintDate,
+                  });
+                }}
+              >
+                <option value="ASAP">できるだけ早く開始</option>
+                <option value="SNET">指定日以降に開始</option>
+                <option value="FNLT">指定日までに終了</option>
+              </select>
+            </label>
+            {task.constraintType !== "ASAP" && (
+              <label className="form-field">
+                制約日
+                <input
+                  data-testid="constraint-date"
+                  type="date"
+                  value={task.constraintDate || ""}
+                  onChange={(e) =>
+                    upd({ constraintDate: e.target.value || null })
+                  }
+                />
+              </label>
+            )}
+            <details className="form-details">
+              <summary>計算の詳細</summary>
+              <dl className="schedule-detail">
+                <dt>最遅開始</dt>
+                <dd>{schedule?.lsDate || "—"}</dd>
+                <dt>最遅終了</dt>
+                <dd>{schedule?.lfDate || "—"}</dd>
+              </dl>
+              <p className="inspector-help">
+                稼働曜日・祝日はプロジェクト設定で変更できます。開始・終了は依存関係と所要日数から計算します。
+              </p>
+            </details>
+          </>
+        )}
       </div>
+      <footer className="inspector-footer">
+        <span>更新：{task.updatedBy}</span>
+        <button
+          className="text-button delete-task"
+          onClick={() => setConfirmDelete(true)}
+        >
+          タスクを削除
+        </button>
+      </footer>
+      {confirmDelete && (
+        <Dialog
+          title="タスクを削除しますか？"
+          onClose={() => setConfirmDelete(false)}
+        >
+          <div className="dialog-body">
+            <p>
+              「{task.name}
+              」と、接続されている依存関係を削除します。取り消しで元に戻せます。
+            </p>
+          </div>
+          <div className="dialog-footer">
+            <button className="btn" onClick={() => setConfirmDelete(false)}>
+              キャンセル
+            </button>
+            <button
+              className="btn danger"
+              onClick={() => {
+                useApp.getState().deleteTasks([task.id]);
+                useApp
+                  .getState()
+                  .showToast("タスクを削除しました。取り消しで戻せます");
+                setConfirmDelete(false);
+              }}
+            >
+              削除する
+            </button>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }
