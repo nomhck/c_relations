@@ -87,6 +87,66 @@ describe("Persistence across product workflows", () => {
     expect(mocks.patch.mock.lastCall![0].tasks[0].name).toBe("latest");
     expect(useApp.getState().saveStatus).toBe("saved");
   });
+  it("persists a saved view created while an imported document is saving", async () => {
+    let finish!: () => void;
+    mocks.save.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { finish = resolve; }),
+    );
+    const doc = emptyDoc("imported");
+    doc.tasks = [makeTask({ name: "imported task" })];
+    useApp.getState().loadDoc(doc);
+    const saving = flushPersistence();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+    useApp.getState().saveCurrentView("工種別");
+    finish();
+    await saving;
+    expect(mocks.patch).toHaveBeenCalledTimes(1);
+    expect(mocks.patch.mock.lastCall![0].savedViews).toEqual([
+      expect.objectContaining({ name: "工種別" }),
+    ]);
+    expect(useApp.getState().saveStatus).toBe("saved");
+  });
+  it("retries the entire imported document after a full save fails", async () => {
+    mocks.save.mockRejectedValueOnce(new Error("quota"));
+    const doc = emptyDoc("imported");
+    doc.tasks = [makeTask({ name: "first" }), makeTask({ name: "second" })];
+    useApp.getState().loadDoc(doc);
+    await flushPersistence().catch(() => undefined);
+    expect(useApp.getState().saveStatus).toBe("error");
+
+    useApp.getState().updateTask(doc.tasks[0].id, { name: "edited" });
+    await flushPersistence();
+    expect(mocks.save).toHaveBeenCalledTimes(2);
+    expect(mocks.save.mock.lastCall![0].tasks.map((t: { name: string }) => t.name))
+      .toEqual(["edited", "second"]);
+    expect(mocks.patch).not.toHaveBeenCalled();
+    expect(useApp.getState().saveStatus).toBe("saved");
+  });
+  it.each([true, false])("saves a replacement import queued during a full save (same project: %s)", async (sameProject) => {
+    let finish!: () => void;
+    mocks.save.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { finish = resolve; }),
+    );
+    const first = emptyDoc("first import");
+    first.tasks = [makeTask({ name: "removed by replacement" })];
+    useApp.getState().loadDoc(first);
+    const saving = flushPersistence();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+
+    const replacement = emptyDoc("replacement");
+    if (sameProject) replacement.project.id = first.project.id;
+    replacement.tasks = [makeTask({ name: "replacement task" })];
+    useApp.getState().loadDoc(replacement);
+    finish();
+    await saving;
+
+    expect(mocks.save).toHaveBeenCalledTimes(2);
+    expect(mocks.save.mock.lastCall![0]).toEqual(replacement);
+    expect(mocks.patch).not.toHaveBeenCalled();
+    expect(useApp.getState().saveStatus).toBe("saved");
+  });
   it("saves metadata-only changes before switching projects", async () => {
     const current = useApp.getState().project.id,
       target = emptyDoc("next");

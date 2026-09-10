@@ -59,8 +59,8 @@ cd epc-task-graph/app
 npm install
 npm run dev          # http://localhost:5173/
 npm run build        # 本番ビルド
-npx vitest run       # 単体テスト（39）
-npx playwright test  # e2e（3）
+npm test             # 単体テスト
+npm run test:e2e     # ブラウザテスト（別途ブラウザのインストールが必要）
 ```
 
 ### ゼロ設定モック（ビルド不要・Phase 0 の参考実装）

@@ -247,6 +247,8 @@ function snapshotDirty(d: DirtyState): DirtySnapshot {
 let saveGeneration = 0;
 let writeQueue: Promise<unknown> = Promise.resolve();
 let activeFlush: Promise<void> | null = null;
+// Imports must keep retrying a full replacement until it succeeds.
+let pendingFullSave: symbol | null = null;
 function enqueueWrite<T>(write: () => Promise<T>): Promise<T> {
   const result = writeQueue.then(write);
   writeQueue = result.catch(() => undefined);
@@ -267,9 +269,18 @@ export function flushPersistence(): Promise<void> {
       const generation = saveGeneration;
       const doc = state.toDoc();
       const dirty = snapshotDirty(state.dirty);
-      const result = await enqueueWrite(() => persistPatch(doc, dirty));
-      if (!result.ok) throw new Error("保存の競合を検知しました");
-      if (useApp.getState().project.id !== doc.project.id) return;
+      const fullSave = pendingFullSave;
+      if (fullSave) {
+        await enqueueWrite(() => getRepo().saveGraph(doc));
+        if (pendingFullSave === fullSave) pendingFullSave = null;
+        if (useApp.getState().project.id === doc.project.id)
+          setCurrentProjectId(doc.project.id);
+        void useApp.getState().refreshProjects();
+      } else {
+        const result = await enqueueWrite(() => persistPatch(doc, dirty));
+        if (!result.ok) throw new Error("保存の競合を検知しました");
+      }
+      if (useApp.getState().project.id !== doc.project.id) continue;
       if (generation === saveGeneration) {
         useApp.setState((s) => {
           s.dirty = {
@@ -1126,6 +1137,7 @@ export const useApp = create<AppState>()(
           saveTimer = null;
         }
         saveGeneration++;
+        pendingFullSave = opts?.persist === false || hydrating ? null : Symbol();
         set((s) => {
           s.schemaVersion = doc.schemaVersion;
           s.project = doc.project;
@@ -1151,38 +1163,13 @@ export const useApp = create<AppState>()(
             deletedTasks: new Set(),
             deletedDeps: new Set(),
           };
-          s.saveStatus = "saved";
+          s.saveStatus = pendingFullSave ? "dirty" : "saved";
         });
         useApp.temporal.getState().clear(); // 新ドキュメントは履歴を持ち越さない
         // loadDoc は「全量差替え」（デモ生成・インポート等）。差分ではなく全量 saveGraph で
         // 永続化する。persist:false（起動時ハイドレート・切替/複製/復元の自前保存）では保存しない。
-        if (!opts || opts.persist !== false) {
-          const doc2 = get().toDoc();
-          if (hydrating) return;
-          useApp.setState({ saveStatus: "dirty" });
-          enqueueWrite(() => getRepo().saveGraph(doc2))
-            .then(() => {
-              setCurrentProjectId(doc2.project.id);
-              if (
-                get().project.id === doc2.project.id &&
-                !get().dirty.tasks.size &&
-                !get().dirty.deps.size &&
-                !get().dirty.deletedTasks.size &&
-                !get().dirty.deletedDeps.size &&
-                get().project === doc2.project
-              )
-                useApp.setState({ saveStatus: "saved" });
-              void get().refreshProjects();
-            })
-            .catch(() => {
-              if (get().project.id === doc2.project.id)
-                useApp.setState({ saveStatus: "error" });
-              get().showToast(
-                "保存に失敗しました。データを書き出して保管してください。",
-                true,
-              );
-            });
-        }
+        if (pendingFullSave)
+          void flushPersistence().catch(() => undefined);
       },
       generateDemo: () => {
         void flushPersistence()
