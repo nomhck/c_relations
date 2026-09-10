@@ -1,0 +1,37 @@
+name: Validate pull request
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Unit tests and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: epc-task-graph/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: epc-task-graph/app/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run unit tests
+        # Avoid CPU contention between performance tests on the shared runner.
+        run: npm test -- --no-file-parallelism
+      - name: Check types and build for GitHub Pages
+        run: npm run build -- --base=/c_relations/

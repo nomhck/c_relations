@@ -1,3 +1,5 @@
+import { normalizeTaskPatch } from "../domain/taskEditing";
+import { showcaseDoc } from "../domain/showcase";
 // ============================================================================
 // zustand ストア（§4.2 store層）: domain を包み、Undo/永続化/表示状態を管理。
 // - zundo(temporal) + diff（差分保存、§2.3）: JSON.stringify 丸ごと保存は禁止。
@@ -6,10 +8,10 @@
 // 状態のうち temporal が追跡するのは { tasks, dependencies } のみ（partialize）。
 // viewSpec/selection/collapsed/focus/filter は履歴に含めない（§2.3）。
 // ============================================================================
-import { create } from 'zustand';
-import { temporal } from 'zundo';
-import { immer } from 'zustand/middleware/immer';
-import { enableMapSet } from 'immer';
+import { create } from "zustand";
+import { temporal } from "zundo";
+import { immer } from "zustand/middleware/immer";
+import { enableMapSet } from "immer";
 import {
   type ActiveView,
   type Calendar,
@@ -31,61 +33,60 @@ import {
   nowISO,
   newId,
   seedDemo,
-  starterDoc,
   collapsedForLevel,
   allTopPrefixes,
   emptyDoc,
   wbsPath,
-} from '../domain';
-import { runFullLayout } from '../layout/layout';
+} from "../domain";
+import { runFullLayout } from "../layout/layout";
 import {
   getCurrentProjectId,
   getRepo,
   persistPatch,
   setCurrentProjectId,
   type DirtySnapshot,
-} from './persistence';
+} from "./persistence";
 
 enableMapSet();
 
-const LS_ME = 'epc-app-me';
-const LS_ACTIVE_VIEW = 'epc-app-active-view';
-const LS_TABLE_COLUMNS = 'epc-app-table-columns';
-const LS_DEFAULT_VIEW = 'epc-app-default-view'; // 起動時に自動適用する保存ビューID（実用化の入口）
+const LS_ME = "epc-app-me";
+const LS_ACTIVE_VIEW = "epc-app-active-view";
+const LS_TABLE_COLUMNS = "epc-app-table-columns";
+const LS_DEFAULT_VIEW = "epc-app-default-view"; // 起動時に自動適用する保存ビューID（実用化の入口）
 
 // 表示列の正準順（§12.3.2）。TableView はこの順で、tableColumns に含まれる列だけを描画する。
 export const ALL_TABLE_COLUMNS: TableColumnKey[] = [
-  'wbsCode',
-  'name',
-  'wbsPath',
-  'discipline',
-  'assignee',
-  'status',
-  'progress',
-  'durationDays',
-  'es',
-  'ef',
-  'ls',
-  'lf',
-  'totalFloat',
-  'critical',
-  'deps',
+  "wbsCode",
+  "name",
+  "wbsPath",
+  "discipline",
+  "assignee",
+  "status",
+  "progress",
+  "durationDays",
+  "es",
+  "ef",
+  "ls",
+  "lf",
+  "totalFloat",
+  "critical",
+  "deps",
 ];
 
 // 既定表示列（§12.3.2 「既定」列）。wbsPath / ls / lf は既定非表示。
 const DEFAULT_TABLE_COLUMNS: TableColumnKey[] = [
-  'wbsCode',
-  'name',
-  'discipline',
-  'assignee',
-  'status',
-  'progress',
-  'durationDays',
-  'es',
-  'ef',
-  'totalFloat',
-  'critical',
-  'deps',
+  "wbsCode",
+  "name",
+  "discipline",
+  "assignee",
+  "status",
+  "progress",
+  "durationDays",
+  "es",
+  "ef",
+  "totalFloat",
+  "critical",
+  "deps",
 ];
 
 export interface Selection {
@@ -134,7 +135,7 @@ export interface AppState {
   selectedIds: string[];
   editingId: string | null;
   toast: ToastItem[];
-  saveStatus: 'saved' | 'dirty';
+  saveStatus: "saved" | "dirty" | "error";
   dirty: DirtyState;
   runners: Runners;
   cpHighlight: boolean; // CP強調トグル（§2.11/§9.2）。非永続・Undo対象外
@@ -176,7 +177,10 @@ export interface AppState {
   clearFilter: () => void;
   setBoundary: (up: number, down: number) => void; // 「担当＋前後」の受け渡し世代（前up/後down）
   setDisplayMode: (m: DisplayMode) => void;
-  toggleArrayFilter: (key: 'disciplines' | 'statuses' | 'assignees' | 'wbsPrefixes', val: string) => void;
+  toggleArrayFilter: (
+    key: "disciplines" | "statuses" | "assignees" | "wbsPrefixes",
+    val: string,
+  ) => void;
   setExpandLevel: (n: number) => void;
   collapseAll: () => void;
   expandAggregate: (aggId: string) => void;
@@ -185,7 +189,7 @@ export interface AppState {
   clearFocus: () => void;
   incFocusDepth: (delta: number) => void;
   setFocusRange: (up: number, down: number) => void; // 上流/下流の世代数を個別に設定（§2.9）
-  setFocusMode: (mode: 'isolate' | 'highlight') => void; // 抽出↔関係ハイライト
+  setFocusMode: (mode: "isolate" | "highlight") => void; // 抽出↔関係ハイライト
   escape: () => void;
   quickMyTasks: () => void;
   quickCriticalOnly: () => void;
@@ -240,39 +244,112 @@ function snapshotDirty(d: DirtyState): DirtySnapshot {
   };
 }
 
+let saveGeneration = 0;
+let writeQueue: Promise<unknown> = Promise.resolve();
+let activeFlush: Promise<void> | null = null;
+// Imports must keep retrying a full replacement until it succeeds.
+let pendingFullSave: symbol | null = null;
+function enqueueWrite<T>(write: () => Promise<T>): Promise<T> {
+  const result = writeQueue.then(write);
+  writeQueue = result.catch(() => undefined);
+  return result;
+}
+
+// Serialize writes; retain dirty rows if another edit happens during a save.
+export function flushPersistence(): Promise<void> {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  if (activeFlush) return activeFlush;
+  activeFlush = (async () => {
+    await writeQueue;
+    while (useApp.getState().saveStatus !== "saved") {
+      const state = useApp.getState();
+      const generation = saveGeneration;
+      const doc = state.toDoc();
+      const dirty = snapshotDirty(state.dirty);
+      const fullSave = pendingFullSave;
+      if (fullSave) {
+        await enqueueWrite(() => getRepo().saveGraph(doc));
+        if (pendingFullSave === fullSave) pendingFullSave = null;
+        if (useApp.getState().project.id === doc.project.id)
+          setCurrentProjectId(doc.project.id);
+        void useApp.getState().refreshProjects();
+      } else {
+        const result = await enqueueWrite(() => persistPatch(doc, dirty));
+        if (!result.ok) throw new Error("保存の競合を検知しました");
+      }
+      if (useApp.getState().project.id !== doc.project.id) continue;
+      if (generation === saveGeneration) {
+        useApp.setState((s) => {
+          s.dirty = {
+            tasks: new Set(),
+            deps: new Set(),
+            deletedTasks: new Set(),
+            deletedDeps: new Set(),
+          };
+          s.saveStatus = "saved";
+        });
+      }
+    }
+  })()
+    .catch((error) => {
+      useApp.setState({ saveStatus: "error" });
+      useApp
+        .getState()
+        .showToast(
+          "保存できませんでした。データを書き出して保管してください。",
+          true,
+        );
+      throw error;
+    })
+    .finally(() => {
+      activeFlush = null;
+    });
+  return activeFlush;
+}
 function scheduleSave() {
+  saveGeneration++;
+  useApp.setState({ saveStatus: "dirty" });
   if (hydrating) return;
   if (saveTimer) clearTimeout(saveTimer);
-  useApp.setState({ saveStatus: 'dirty' });
   saveTimer = setTimeout(() => {
-    const snap = snapshotDirty(useApp.getState().dirty);
-    const doc = useApp.getState().toDoc();
-    persistPatch(doc, snap)
-      .then((res) => {
-        if (!res.ok) {
-          // ローカル単独運用では通常起きない（§7.2）。起きたら通知のみ。
-          useApp.getState().showToast('保存で衝突を検知しました（' + res.conflicts.length + '件）', true);
-          return;
-        }
-        // 保存済みの ID だけをダーティから外す（保存中に追加された分は残す）。
-        useApp.setState((s) => {
-          for (const id of snap.tasks) s.dirty.tasks.delete(id);
-          for (const id of snap.deps) s.dirty.deps.delete(id);
-          for (const id of snap.deletedTasks) s.dirty.deletedTasks.delete(id);
-          for (const id of snap.deletedDeps) s.dirty.deletedDeps.delete(id);
-          const clean =
-            s.dirty.tasks.size === 0 &&
-            s.dirty.deps.size === 0 &&
-            s.dirty.deletedTasks.size === 0 &&
-            s.dirty.deletedDeps.size === 0;
-          s.saveStatus = clean ? 'saved' : 'dirty';
-        });
-      })
-      .catch(() => {
-        useApp.setState({ saveStatus: 'dirty' });
-        useApp.getState().showToast('Dexie保存に失敗しました。エクスポートを推奨', true);
-      });
+    void flushPersistence().catch(() => undefined);
   }, 500);
+}
+
+function restoreHistory(direction: "undo" | "redo") {
+  const before = useApp.getState();
+  const taskIds = new Set(before.tasks.map((t) => t.id));
+  const depIds = new Set(before.dependencies.map((d) => d.id));
+  useApp.temporal.getState()[direction]();
+  useApp.setState((s) => {
+    const currentTasks = new Set(s.tasks.map((t) => t.id));
+    const currentDeps = new Set(s.dependencies.map((d) => d.id));
+    for (const id of new Set([...taskIds, ...currentTasks])) {
+      if (currentTasks.has(id)) {
+        s.dirty.tasks.add(id);
+        s.dirty.deletedTasks.delete(id);
+      } else {
+        s.dirty.tasks.delete(id);
+        s.dirty.deletedTasks.add(id);
+      }
+    }
+    for (const id of new Set([...depIds, ...currentDeps])) {
+      if (currentDeps.has(id)) {
+        s.dirty.deps.add(id);
+        s.dirty.deletedDeps.delete(id);
+      } else {
+        s.dirty.deps.delete(id);
+        s.dirty.deletedDeps.add(id);
+      }
+    }
+    s.selectedIds = s.selectedIds.filter((id) => currentTasks.has(id));
+    if (s.selection.taskId && !currentTasks.has(s.selection.taskId))
+      s.selection.taskId = null;
+  });
+  scheduleSave();
 }
 
 // 起動時: まず starter を同期表示 → Dexie から現在プロジェクトへ非同期ハイドレート（§6.1）。
@@ -296,37 +373,52 @@ export async function bootstrapStore(): Promise<void> {
     }
     await useApp.getState().refreshProjects();
   } catch {
-    /* Dexie 不可環境では starter のまま動作 */
+    useApp.setState({ saveStatus: "error" });
+    useApp
+      .getState()
+      .showToast(
+        "保存領域を開けませんでした。ブラウザの設定を確認してください。",
+        true,
+      );
   } finally {
     hydrating = false;
     // 既定ビューが指定されていて現プロジェクトに実在すれば、起動直後に自動適用（実用化の入口）。
     // loadDoc が viewSpec を既定へ戻した後に適用するので順序が正しい。
     const st = useApp.getState();
-    if (st.defaultViewId && st.savedViews.some((v) => v.id === st.defaultViewId)) {
+    if (
+      st.defaultViewId &&
+      st.savedViews.some((v) => v.id === st.defaultViewId)
+    ) {
       st.applyView(st.defaultViewId);
     }
     // ハイドレーション中に行われた編集（保存が抑止されていた分）を吐き出す。
     const d = useApp.getState().dirty;
-    if (d.tasks.size || d.deps.size || d.deletedTasks.size || d.deletedDeps.size) scheduleSave();
+    if (
+      d.tasks.size ||
+      d.deps.size ||
+      d.deletedTasks.size ||
+      d.deletedDeps.size
+    )
+      scheduleSave();
   }
 }
 
 function initialMe(): string {
   try {
-    return localStorage.getItem(LS_ME) || '私';
+    return localStorage.getItem(LS_ME) || "私";
   } catch {
-    return '私';
+    return "私";
   }
 }
 
 function initialActiveView(): ActiveView {
   try {
     const v = localStorage.getItem(LS_ACTIVE_VIEW);
-    if (v === 'graph' || v === 'table' || v === 'gantt') return v;
+    if (v === "graph" || v === "table" || v === "gantt") return v;
   } catch {
     /* ignore */
   }
-  return 'graph';
+  return "graph";
 }
 
 function initialTableColumns(): TableColumnKey[] {
@@ -354,7 +446,7 @@ function currentWbsContext(): string {
     const t = s.tasks.find((x) => x.id === selId);
     if (t) return t.wbsCode;
   }
-  return '';
+  return "";
 }
 
 function nameOfState(s: AppState, id: string): string {
@@ -362,18 +454,24 @@ function nameOfState(s: AppState, id: string): string {
   return t ? t.name : id.slice(0, 6);
 }
 
-export function explainReject(chk: ReturnType<typeof canConnect>, s: AppState): string {
-  if (chk.reason === 'self') return '自己ループは作成できません';
-  if (chk.reason === 'duplicate') return '同じ依存が既に存在します';
-  if (chk.reason === 'cycle') {
+export function explainReject(
+  chk: ReturnType<typeof canConnect>,
+  s: AppState,
+): string {
+  if (chk.reason === "self") return "自己ループは作成できません";
+  if (chk.reason === "duplicate") return "同じ依存が既に存在します";
+  if (chk.reason === "cycle") {
     const names = (chk.path || []).map((id) => nameOfState(s, id));
-    const shown = names.length > 6 ? [...names.slice(0, 3), '…', ...names.slice(-2)] : names;
-    return '循環依存になるため接続できません（' + shown.join(' → ') + '）';
+    const shown =
+      names.length > 6
+        ? [...names.slice(0, 3), "…", ...names.slice(-2)]
+        : names;
+    return "循環依存になるため接続できません（" + shown.join(" → ") + "）";
   }
-  return '接続できません';
+  return "接続できません";
 }
 
-const doc0 = starterDoc();
+const doc0 = showcaseDoc();
 const me0 = initialMe();
 
 export const useApp = create<AppState>()(
@@ -390,7 +488,7 @@ export const useApp = create<AppState>()(
       me: me0,
       viewSpec: {
         filter: {},
-        displayMode: 'DIM',
+        displayMode: "DIM",
         collapsedWbs: doc0.viewState.collapsedWbs || [],
         focus: null,
         me: me0,
@@ -400,8 +498,13 @@ export const useApp = create<AppState>()(
       selectedIds: [],
       editingId: null,
       toast: [],
-      saveStatus: 'saved',
-      dirty: { tasks: new Set(), deps: new Set(), deletedTasks: new Set(), deletedDeps: new Set() },
+      saveStatus: "saved",
+      dirty: {
+        tasks: new Set(),
+        deps: new Set(),
+        deletedTasks: new Set(),
+        deletedDeps: new Set(),
+      },
       runners: {},
       cpHighlight: false,
       connectMode: false,
@@ -457,7 +560,11 @@ export const useApp = create<AppState>()(
       // ---- タスク/依存 CRUD（ダーティ追跡付き）----
       addTask: (p = {}, { edit = true } = {}) => {
         const t = makeTask(
-          { ...p, wbsCode: p.wbsCode != null ? p.wbsCode : currentWbsContext() || '', updatedBy: get().me },
+          {
+            ...p,
+            wbsCode: p.wbsCode != null ? p.wbsCode : currentWbsContext() || "",
+            updatedBy: get().me,
+          },
           get().me,
         );
         set((s) => {
@@ -474,7 +581,7 @@ export const useApp = create<AppState>()(
         set((s) => {
           const t = s.tasks.find((x) => x.id === id);
           if (!t) return;
-          Object.assign(t, patch);
+          Object.assign(t, normalizeTaskPatch(t, patch));
           t.rev += 1;
           t.updatedAt = nowISO();
           t.updatedBy = s.me;
@@ -512,10 +619,17 @@ export const useApp = create<AppState>()(
           for (const id of ids) s.dirty.deletedTasks.add(id);
           s.selectedIds = s.selectedIds.filter((id) => !idset.has(id));
           if (s.selection.taskId && idset.has(s.selection.taskId))
-            s.selection = { taskId: s.selectedIds[s.selectedIds.length - 1] || null, edgeId: null, aggId: null };
+            s.selection = {
+              taskId: s.selectedIds[s.selectedIds.length - 1] || null,
+              edgeId: null,
+              aggId: null,
+            };
         });
         scheduleSave();
-        if (ids.length > 1) get().showToast(ids.length + '件削除しました（Cmd+Z で元に戻せます）');
+        if (ids.length > 1)
+          get().showToast(
+            ids.length + "件削除しました（Cmd+Z で元に戻せます）",
+          );
       },
       addDependencyChecked: (source, target) => {
         const chk = canConnect(source, target, get().dependencies);
@@ -564,7 +678,10 @@ export const useApp = create<AppState>()(
         const src = get().tasks.find((t) => t.id === sourceId);
         if (!src) return;
         const pos = { x: src.position.x + 220, y: src.position.y };
-        const t = makeTask({ wbsCode: src.wbsCode, discipline: src.discipline, position: pos }, get().me);
+        const t = makeTask(
+          { wbsCode: src.wbsCode, discipline: src.discipline, position: pos },
+          get().me,
+        );
         const dep = makeDep(sourceId, t.id, {}, get().me);
         set((s) => {
           s.tasks.push(t);
@@ -602,7 +719,11 @@ export const useApp = create<AppState>()(
       // Cmd/Ctrl+クリックのトグル: id を多選択に足す/外す。アンカーは操作した id（外した時は残りの末尾）。
       toggleSelectedId: (id) =>
         set((s) => {
-          const base = s.selectedIds.length ? [...s.selectedIds] : s.selection.taskId ? [s.selection.taskId] : [];
+          const base = s.selectedIds.length
+            ? [...s.selectedIds]
+            : s.selection.taskId
+              ? [s.selection.taskId]
+              : [];
           const idx = base.indexOf(id);
           let anchor: string | null;
           if (idx >= 0) {
@@ -622,7 +743,7 @@ export const useApp = create<AppState>()(
           const now = nowISO();
           for (const t of s.tasks) {
             if (!idset.has(t.id)) continue;
-            Object.assign(t, patch);
+            Object.assign(t, normalizeTaskPatch(t, patch));
             t.rev += 1;
             t.updatedAt = now;
             t.updatedBy = s.me;
@@ -651,12 +772,14 @@ export const useApp = create<AppState>()(
         set((s) => {
           s.viewSpec.displayMode = m;
         });
-        if (m === 'ISOLATE') get().fit();
+        if (m === "ISOLATE") get().fit();
       },
       toggleArrayFilter: (key, val) =>
         set((s) => {
           const cur = (s.viewSpec.filter[key] as string[] | undefined) || [];
-          const next = cur.includes(val) ? cur.filter((x) => x !== val) : [...cur, val];
+          const next = cur.includes(val)
+            ? cur.filter((x) => x !== val)
+            : [...cur, val];
           (s.viewSpec.filter as any)[key] = next;
         }),
       setExpandLevel: (n) => {
@@ -681,8 +804,10 @@ export const useApp = create<AppState>()(
       },
       expandAggregate: (aggId) => {
         set((s) => {
-          const prefix = aggId.startsWith('wbs::') ? aggId.slice(5) : aggId;
-          const collapsedWbs = s.viewSpec.collapsedWbs.filter((p) => p !== prefix);
+          const prefix = aggId.startsWith("wbs::") ? aggId.slice(5) : aggId;
+          const collapsedWbs = s.viewSpec.collapsedWbs.filter(
+            (p) => p !== prefix,
+          );
           s.viewSpec.collapsedWbs = collapsedWbs;
           s.viewState.collapsedWbs = collapsedWbs;
           s.selection = { taskId: null, edgeId: null, aggId: null };
@@ -708,11 +833,12 @@ export const useApp = create<AppState>()(
             s.viewSpec.focus = null;
           } else {
             // 既定は「関係ハイライト」（全体を残し近傍を強調・§2.9 ユーザー要望2026-07-22）。
-            s.viewSpec.focus = { taskId, up: 2, down: 2, mode: 'highlight' };
+            s.viewSpec.focus = { taskId, up: 2, down: 2, mode: "highlight" };
           }
         });
         // ハイライトは文脈を保ちたいので起点センタリングのみ（fitはしない）。
-        if (get().viewSpec.focus) setTimeout(() => get().runners.centerSelected?.(), 30);
+        if (get().viewSpec.focus)
+          setTimeout(() => get().runners.centerSelected?.(), 30);
       },
       clearFocus: () =>
         set((s) => {
@@ -743,16 +869,20 @@ export const useApp = create<AppState>()(
           } else if (s.selectedIds.length) {
             // 多選択中の Esc は単一（アンカー）へ戻す（選択自体は残す）。
             s.selectedIds = [];
-          } else if (s.selection.taskId || s.selection.edgeId || s.selection.aggId) {
+          } else if (
+            s.selection.taskId ||
+            s.selection.edgeId ||
+            s.selection.aggId
+          ) {
             s.selection = { taskId: null, edgeId: null, aggId: null };
           }
         }),
       // 「自分のタスク」＝担当で絞る＋前後1世代の受け渡し先を文脈表示（担当＋前後ビューの既定）。
       quickMyTasks: () => {
         set((s) => {
-          s.viewSpec.displayMode = 'ISOLATE';
+          s.viewSpec.displayMode = "ISOLATE";
           s.viewSpec.focus = null;
-          s.viewSpec.filter = { assignees: ['@me'] };
+          s.viewSpec.filter = { assignees: ["@me"] };
           s.viewSpec.boundaryUp = 1;
           s.viewSpec.boundaryDown = 1;
         });
@@ -761,7 +891,7 @@ export const useApp = create<AppState>()(
       // 「CPのみ表示」組込みビュー（§2.8）: criticalOnly + ISOLATE で背骨チェーンを抽出。
       quickCriticalOnly: () => {
         set((s) => {
-          s.viewSpec.displayMode = 'ISOLATE';
+          s.viewSpec.displayMode = "ISOLATE";
           s.viewSpec.focus = null;
           s.viewSpec.filter = { criticalOnly: true };
           s.viewSpec.boundaryUp = 0;
@@ -783,14 +913,16 @@ export const useApp = create<AppState>()(
           s.connectSource = null;
         });
         get().showToast(
-          on ? 'つなぐモード: 始点→終点の順にクリック（もう一度で切断・Escで終了）' : 'つなぐモードを終了しました',
+          on
+            ? "つなぐモード: 始点→終点の順にクリック（もう一度で切断・Escで終了）"
+            : "つなぐモードを終了しました",
         );
       },
       connectClick: (id) => {
         const s = get();
         if (!s.connectMode) return;
-        if (id.startsWith('wbs::')) {
-          s.showToast('集約ノードは接続できません。展開してから', true);
+        if (id.startsWith("wbs::")) {
+          s.showToast("集約ノードは接続できません。展開してから", true);
           return;
         }
         const src = s.connectSource;
@@ -810,12 +942,15 @@ export const useApp = create<AppState>()(
           return;
         }
         // 既に src→id があれば切断、なければ接続（循環は addDependencyChecked が拒否）。
-        const existing = s.dependencies.find((d) => d.predecessorId === src && d.successorId === id);
+        const existing = s.dependencies.find(
+          (d) => d.predecessorId === src && d.successorId === id,
+        );
         if (existing) {
           s.deleteDeps([existing.id]);
-          s.showToast('依存を切断しました（Cmd+Z で戻せます）');
+          s.showToast("依存を切断しました（Cmd+Z で戻せます）");
         } else {
-          if (s.addDependencyChecked(src, id)) s.showToast('依存を接続しました');
+          if (s.addDependencyChecked(src, id))
+            s.showToast("依存を接続しました");
         }
         // 始点は保持＝A→B, A→C と連続で繋げる。
       },
@@ -825,20 +960,22 @@ export const useApp = create<AppState>()(
         const s = get();
         const view: SavedView = {
           id: newId(),
-          name: name.trim() || '無題ビュー',
+          name: name.trim() || "無題ビュー",
           filter: JSON.parse(JSON.stringify(s.viewSpec.filter)),
           displayMode: s.viewSpec.displayMode,
           collapsedWbs: [...s.viewSpec.collapsedWbs],
           createdBy: s.me,
           updatedAt: nowISO(),
-          tableSort: s.tableSort.length ? s.tableSort.map((t) => ({ ...t })) : undefined,
+          tableSort: s.tableSort.length
+            ? s.tableSort.map((t) => ({ ...t }))
+            : undefined,
           tableColumns: [...s.tableColumns],
         };
         set((st) => {
           st.savedViews.push(view);
         });
         scheduleSave();
-        get().showToast('ビューを保存しました: ' + view.name);
+        get().showToast("ビューを保存しました: " + view.name);
       },
       applyView: (id) => {
         const v = get().savedViews.find((x) => x.id === id);
@@ -852,21 +989,28 @@ export const useApp = create<AppState>()(
           s.viewSpec.focus = null;
           if (v.tableSort) {
             s.tableSort = v.tableSort.filter(
-              (t) => String(t.key) !== 'deps' && (ALL_TABLE_COLUMNS as string[]).includes(t.key),
+              (t) =>
+                String(t.key) !== "deps" &&
+                (ALL_TABLE_COLUMNS as string[]).includes(t.key),
             ) as TableSort[];
           }
           if (v.tableColumns && v.tableColumns.length) {
-            const valid = ALL_TABLE_COLUMNS.filter((k) => v.tableColumns!.includes(k));
+            const valid = ALL_TABLE_COLUMNS.filter((k) =>
+              v.tableColumns!.includes(k),
+            );
             if (valid.length) s.tableColumns = valid;
           }
         });
         try {
-          localStorage.setItem(LS_TABLE_COLUMNS, JSON.stringify(get().tableColumns));
+          localStorage.setItem(
+            LS_TABLE_COLUMNS,
+            JSON.stringify(get().tableColumns),
+          );
         } catch {
           /* ignore */
         }
         get().fit();
-        get().showToast('ビューを適用しました: ' + v.name);
+        get().showToast("ビューを適用しました: " + v.name);
       },
       deleteView: (id) => {
         set((s) => {
@@ -874,7 +1018,8 @@ export const useApp = create<AppState>()(
           if (s.defaultViewId === id) s.defaultViewId = null; // 既定だったビューを消したら既定も解除
         });
         try {
-          if (get().defaultViewId === null) localStorage.removeItem(LS_DEFAULT_VIEW);
+          if (get().defaultViewId === null)
+            localStorage.removeItem(LS_DEFAULT_VIEW);
         } catch {
           /* ignore */
         }
@@ -916,9 +1061,9 @@ export const useApp = create<AppState>()(
           const idx = cur.findIndex((x) => x.key === key);
           if (!additive) {
             if (idx === -1) {
-              s.tableSort = [{ key, dir: 'asc' }];
-            } else if (cur[idx].dir === 'asc') {
-              s.tableSort = [{ key, dir: 'desc' }];
+              s.tableSort = [{ key, dir: "asc" }];
+            } else if (cur[idx].dir === "asc") {
+              s.tableSort = [{ key, dir: "desc" }];
             } else {
               s.tableSort = []; // desc の次は解除（＝WBS自然順へ戻る）
             }
@@ -927,9 +1072,9 @@ export const useApp = create<AppState>()(
           // 追加（Shift+クリック）: 既存キーはトグル、無ければ末尾に追加（最大3キー）。
           const next = [...cur];
           if (idx === -1) {
-            if (next.length < 3) next.push({ key, dir: 'asc' });
-          } else if (next[idx].dir === 'asc') {
-            next[idx] = { key, dir: 'desc' };
+            if (next.length < 3) next.push({ key, dir: "asc" });
+          } else if (next[idx].dir === "asc") {
+            next[idx] = { key, dir: "desc" };
           } else {
             next.splice(idx, 1);
           }
@@ -940,10 +1085,15 @@ export const useApp = create<AppState>()(
           const has = s.tableColumns.includes(key);
           s.tableColumns = has
             ? s.tableColumns.filter((k) => k !== key)
-            : ALL_TABLE_COLUMNS.filter((k) => k === key || s.tableColumns.includes(k));
+            : ALL_TABLE_COLUMNS.filter(
+                (k) => k === key || s.tableColumns.includes(k),
+              );
         });
         try {
-          localStorage.setItem(LS_TABLE_COLUMNS, JSON.stringify(get().tableColumns));
+          localStorage.setItem(
+            LS_TABLE_COLUMNS,
+            JSON.stringify(get().tableColumns),
+          );
         } catch {
           /* ignore */
         }
@@ -955,7 +1105,9 @@ export const useApp = create<AppState>()(
           const t = s.tasks.find((x) => x.id === taskId);
           if (!t) return;
           const ancestors = new Set(wbsPath(t.wbsCode));
-          const collapsedWbs = s.viewSpec.collapsedWbs.filter((p) => !ancestors.has(p));
+          const collapsedWbs = s.viewSpec.collapsedWbs.filter(
+            (p) => !ancestors.has(p),
+          );
           s.viewSpec.collapsedWbs = collapsedWbs;
           s.viewState.collapsedWbs = collapsedWbs;
           s.selection = { taskId, edgeId: null, aggId: null };
@@ -963,22 +1115,8 @@ export const useApp = create<AppState>()(
         }),
 
       // ---- Undo / Redo（zundo temporal 経由。戻した行もダーティ扱い、§2.3）----
-      undo: () => {
-        useApp.temporal.getState().undo();
-        set((s) => {
-          for (const t of s.tasks) s.dirty.tasks.add(t.id);
-          for (const d of s.dependencies) s.dirty.deps.add(d.id);
-        });
-        scheduleSave();
-      },
-      redo: () => {
-        useApp.temporal.getState().redo();
-        set((s) => {
-          for (const t of s.tasks) s.dirty.tasks.add(t.id);
-          for (const d of s.dependencies) s.dirty.deps.add(d.id);
-        });
-        scheduleSave();
-      },
+      undo: () => restoreHistory("undo"),
+      redo: () => restoreHistory("redo"),
 
       // ---- ドキュメント（doc化・差替え）----
       toDoc: () => {
@@ -994,6 +1132,12 @@ export const useApp = create<AppState>()(
         };
       },
       loadDoc: (doc, opts) => {
+        if (saveTimer) {
+          clearTimeout(saveTimer);
+          saveTimer = null;
+        }
+        saveGeneration++;
+        pendingFullSave = opts?.persist === false || hydrating ? null : Symbol();
         set((s) => {
           s.schemaVersion = doc.schemaVersion;
           s.project = doc.project;
@@ -1007,59 +1151,55 @@ export const useApp = create<AppState>()(
           s.editingId = null;
           s.viewSpec = {
             filter: {},
-            displayMode: 'DIM',
+            displayMode: "DIM",
             collapsedWbs: doc.viewState.collapsedWbs || [],
             focus: null,
             me: s.me,
           };
           s.expandLevel = doc.viewState.expandLevel || 2;
-          s.dirty = { tasks: new Set(), deps: new Set(), deletedTasks: new Set(), deletedDeps: new Set() };
-          s.saveStatus = 'saved';
+          s.dirty = {
+            tasks: new Set(),
+            deps: new Set(),
+            deletedTasks: new Set(),
+            deletedDeps: new Set(),
+          };
+          s.saveStatus = pendingFullSave ? "dirty" : "saved";
         });
         useApp.temporal.getState().clear(); // 新ドキュメントは履歴を持ち越さない
         // loadDoc は「全量差替え」（デモ生成・インポート等）。差分ではなく全量 saveGraph で
         // 永続化する。persist:false（起動時ハイドレート・切替/複製/復元の自前保存）では保存しない。
-        if (!opts || opts.persist !== false) {
-          const doc2 = get().toDoc();
-          if (hydrating) return;
-          useApp.setState({ saveStatus: 'dirty' });
-          getRepo()
-            .saveGraph(doc2)
-            .then(() => {
-              setCurrentProjectId(doc2.project.id);
-              useApp.setState({ saveStatus: 'saved' });
-              void get().refreshProjects();
-            })
-            .catch(() => {
-              useApp.setState({ saveStatus: 'dirty' });
-              get().showToast('Dexie保存に失敗しました。エクスポートを推奨', true);
-            });
-        }
+        if (pendingFullSave)
+          void flushPersistence().catch(() => undefined);
       },
       generateDemo: () => {
-        // density は seedDemo の既定（1.15＝実プロジェクトに近い疎密度）を使う。過密にしない。
-        const doc = seedDemo({ count: 4000 });
-        get().loadDoc(doc);
-        get().fit(200);
-        get().showToast(
-          `4,000ノードデモを生成しました（tasks=${doc.tasks.length} / deps=${doc.dependencies.length}）`,
-        );
+        void flushPersistence()
+          .then(() => {
+            const doc = seedDemo({ count: 4000 });
+            get().loadDoc(doc);
+            get().fit(200);
+            get().showToast("4,000タスクのデモプロジェクトを開きました");
+          })
+          .catch(() => undefined);
       },
 
       // ---- 全体整列（Worker、§2.5）----
       layoutAll: () => {
-        get().showToast('全体整列を実行中…（Web Workerで非同期。UIはブロックしません）');
+        get().showToast(
+          "全体整列を実行中…（Web Workerで非同期。UIはブロックしません）",
+        );
         const s = get();
         runFullLayout(
           s.tasks.map((t) => t.id),
-          s.dependencies.map((d) => [d.predecessorId, d.successorId] as [string, string]),
+          s.dependencies.map(
+            (d) => [d.predecessorId, d.successorId] as [string, string],
+          ),
         )
           .then((posMap) => {
             get().applyPositions(posMap);
-            get().showToast('全体整列が完了しました（左→右 DAGレイアウト）');
+            get().showToast("全体整列が完了しました（左→右 DAGレイアウト）");
             get().runners.fitView?.();
           })
-          .catch(() => get().showToast('全体整列に失敗しました', true));
+          .catch(() => get().showToast("全体整列に失敗しました", true));
       },
 
       // ---- 複数プロジェクト管理（§6.1）----
@@ -1079,7 +1219,9 @@ export const useApp = create<AppState>()(
       },
       updateCalendar: (patch) => {
         set((s) => {
-          const cal = s.calendars.find((c) => c.id === s.project.calendarId) ?? s.calendars[0];
+          const cal =
+            s.calendars.find((c) => c.id === s.project.calendarId) ??
+            s.calendars[0];
           if (!cal) return;
           Object.assign(cal, patch);
           s.project.updatedAt = nowISO();
@@ -1097,70 +1239,68 @@ export const useApp = create<AppState>()(
         }
       },
       switchProject: async (id) => {
-        // 保存待ちを吐き出してから切替（未保存差分を落とさない）。
-        const snap = snapshotDirty(get().dirty);
-        if (snap.tasks.length || snap.deps.length || snap.deletedTasks.length || snap.deletedDeps.length) {
-          try {
-            await persistPatch(get().toDoc(), snap);
-          } catch {
-            /* ignore */
-          }
-        }
         try {
+          await flushPersistence();
           const doc = await getRepo().loadGraph(id);
           setCurrentProjectId(id);
           get().loadDoc(doc, { persist: false });
           get().fit(200);
-          get().showToast('プロジェクトを切り替えました: ' + doc.project.name);
+          get().showToast("プロジェクトを切り替えました: " + doc.project.name);
         } catch {
-          get().showToast('プロジェクトの読込に失敗しました', true);
+          get().showToast("プロジェクトの読込に失敗しました", true);
         }
       },
       newProject: async (name) => {
-        const doc = emptyDoc(name || '新規プロジェクト');
+        const doc = emptyDoc(name || "新規プロジェクト");
         try {
-          await getRepo().saveGraph(doc);
+          await flushPersistence();
+          await enqueueWrite(() => getRepo().saveGraph(doc));
           setCurrentProjectId(doc.project.id);
           get().loadDoc(doc, { persist: false });
           await get().refreshProjects();
-          get().showToast('新規プロジェクトを作成しました');
+          get().showToast("新規プロジェクトを作成しました");
         } catch {
-          get().showToast('プロジェクト作成に失敗しました', true);
+          get().showToast("プロジェクト作成に失敗しました", true);
         }
       },
       duplicateCurrentProject: async () => {
         const cur = get().project;
         try {
-          const dup = await getRepo().duplicateProject(cur.id, cur.name + '（複製）');
+          await flushPersistence();
+          const dup = await getRepo().duplicateProject(
+            cur.id,
+            cur.name + "（複製）",
+          );
           setCurrentProjectId(dup.project.id);
           get().loadDoc(dup, { persist: false });
           await get().refreshProjects();
           get().fit(200);
-          get().showToast('プロジェクトを複製しました');
+          get().showToast("プロジェクトを複製しました");
         } catch {
-          get().showToast('複製に失敗しました', true);
+          get().showToast("複製に失敗しました", true);
         }
       },
       deleteCurrentProject: async () => {
         const curId = get().project.id;
         try {
+          await flushPersistence();
           await getRepo().deleteProject(curId);
           const list = await getRepo().listProjects();
           if (list.length) {
             await get().switchProject(list[0].id);
           } else {
-            await get().newProject('新規プロジェクト');
+            await get().newProject("新規プロジェクト");
           }
           await get().refreshProjects();
-          get().showToast('プロジェクトを削除しました');
+          get().showToast("プロジェクトを削除しました");
         } catch {
-          get().showToast('削除に失敗しました', true);
+          get().showToast("削除に失敗しました", true);
         }
       },
     })),
     {
       // temporal 追跡は tasks/dependencies のみ（§2.3）。
-      partialize: (state): Pick<AppState, 'tasks' | 'dependencies'> => ({
+      partialize: (state): Pick<AppState, "tasks" | "dependencies"> => ({
         tasks: state.tasks,
         dependencies: state.dependencies,
       }),
@@ -1168,7 +1308,7 @@ export const useApp = create<AppState>()(
       // 差分保存（§2.3）: 参照が変わったキーだけを、その「変更前の値」で保存する。
       // immer の構造共有により未変更 Task/Dep オブジェクトは参照共有され、メモリ膨張しない。
       diff: (pastState, currentState) => {
-        const delta: Partial<Pick<AppState, 'tasks' | 'dependencies'>> = {};
+        const delta: Partial<Pick<AppState, "tasks" | "dependencies">> = {};
         let changed = false;
         if (pastState.tasks !== currentState.tasks) {
           delta.tasks = pastState.tasks;
@@ -1191,4 +1331,6 @@ export function nameOf(id: string): string {
 // 現在の稼働カレンダー（project.calendarId で参照。無ければ先頭）。selectCpm に渡す。
 // 参照は immer が変更時のみ差し替えるため、全コンポーネントで同一参照＝selectCpm のキャッシュが効く。
 export const selectActiveCalendar = (s: AppState): Calendar | null =>
-  s.calendars.find((c) => c.id === s.project.calendarId) ?? s.calendars[0] ?? null;
+  s.calendars.find((c) => c.id === s.project.calendarId) ??
+  s.calendars[0] ??
+  null;

@@ -1,11 +1,11 @@
+import { Icon } from "./workspace/Icon";
 // ヘッダ/ツールバー（§1.3）: プロジェクト切替・CP強調・完了日・作成・整列・Undo/Redo・
 //   デモ生成・Export/Import・保存状態。
-import { useEffect, useRef, useState } from 'react';
-import { useStore } from 'zustand';
-import { useApp, selectActiveCalendar } from '../store/store';
-import { selectCpm } from '../store/selectors';
-import { useCpm } from '../store/useCpm';
-import { validateDoc, wbsPath, toMspdi, fromMspdi, emptyDoc } from '../domain';
+import { useEffect, useRef, useState } from "react";
+import { useStore } from "zustand";
+import { useApp, selectActiveCalendar, flushPersistence } from "../store/store";
+import { selectCpm } from "../store/selectors";
+import { validateDoc, wbsPath, toMspdi, fromMspdi, emptyDoc } from "../domain";
 
 // データ入出力メニュー（ツールバー整理・§1.3）: JSON/MSPDI の出力・取込を1つのドロップダウンに集約。
 function DataMenu({
@@ -24,10 +24,18 @@ function DataMenu({
   useEffect(() => {
     if (!open) return;
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", h);
+      document.removeEventListener("keydown", esc);
+    };
   }, [open]);
   const item = (label: string, fn: () => void) => (
     <button
@@ -42,40 +50,26 @@ function DataMenu({
   );
   return (
     <div className="menu" ref={ref}>
-      <button className="btn" onClick={() => setOpen((o) => !o)} data-testid="data-menu" title="入出力">
+      <button
+        className="btn"
+        aria-expanded={open}
+        aria-haspopup="true"
+        onClick={() => setOpen((o) => !o)}
+        data-testid="data-menu"
+        title="入出力"
+      >
         データ ▾
       </button>
       {open ? (
         <div className="menu-pop">
-          {item('JSON出力（.epcgraph.json）', onJsonExport)}
-          {item('JSON取込…', onJsonImport)}
+          {item("JSONを書き出す", onJsonExport)}
+          {item("JSONを読み込む…", onJsonImport)}
           <div className="menu-sep" />
-          {item('MSPDI出力（MS Project）', onMspdiExport)}
-          {item('MSPDI取込…', onMspdiImport)}
+          {item("MS Project XMLを書き出す", onMspdiExport)}
+          {item("MS Project XMLを読み込む…", onMspdiImport)}
         </div>
       ) : null}
     </div>
-  );
-}
-
-// プロジェクト完了日サマリ（§9.2）。完了日が動いたらフラッシュして即時フィードバック。
-function CompletionSummary() {
-  const cpm = useCpm();
-  const endDate = cpm.projectEndDate;
-  const [flash, setFlash] = useState(false);
-  const prev = useRef(endDate);
-  useEffect(() => {
-    if (prev.current !== endDate) {
-      prev.current = endDate;
-      setFlash(true);
-      const t = setTimeout(() => setFlash(false), 700);
-      return () => clearTimeout(t);
-    }
-  }, [endDate]);
-  return (
-    <span className={'completion' + (flash ? ' flash' : '')} data-testid="completion" title="CPM Step1 による完了日（暦日・FS）">
-      完了日: <b>{endDate || '—'}</b>（+{cpm.projectEnd}d · CP {cpm.criticalTasks.size}）
-    </span>
   );
 }
 
@@ -86,6 +80,7 @@ function ProjectBar() {
   return (
     <span className="projectbar">
       <select
+        aria-label="プロジェクト切替"
         value={projectId}
         onChange={(e) => useApp.getState().switchProject(e.target.value)}
         title="プロジェクト切替"
@@ -93,7 +88,7 @@ function ProjectBar() {
         {list.length === 0 ? <option value={projectId}>{name}</option> : null}
         {list.map((p) => (
           <option key={p.id} value={p.id}>
-            {p.name}
+            {p.id === projectId ? name : p.name}
           </option>
         ))}
       </select>
@@ -102,16 +97,30 @@ function ProjectBar() {
 }
 
 // 操作メニュー（二次操作を集約・大胆に隠す）: プロジェクト管理・整列・デモ生成。
-function ActionsMenu() {
+function ActionsMenu({
+  onNewProject,
+  onSettings,
+}: {
+  onNewProject?: () => void;
+  onSettings?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", h);
+      document.removeEventListener("keydown", esc);
+    };
   }, [open]);
   const item = (label: string, fn: () => void) => (
     <button
@@ -126,32 +135,50 @@ function ActionsMenu() {
   );
   return (
     <div className="menu" ref={ref}>
-      <button className="btn" data-testid="actions-menu" title="操作" onClick={() => setOpen((o) => !o)}>
+      <button
+        className="btn"
+        aria-expanded={open}
+        aria-haspopup="true"
+        data-testid="actions-menu"
+        title="操作"
+        onClick={() => setOpen((o) => !o)}
+      >
         操作 ▾
       </button>
       {open ? (
         <div className="menu-pop">
-          {item('自動整列（表示中）', () => useApp.getState().runners.layoutVisible?.())}
-          {item('全体整列（Worker）', () => useApp.getState().layoutAll())}
+          {item("自動整列（表示中）", () =>
+            useApp.getState().runners.layoutVisible?.(),
+          )}
+          {item("全体整列（Worker）", () => useApp.getState().layoutAll())}
           <div className="menu-sep" />
-          {item('＋新規プロジェクト', () => useApp.getState().newProject('新規プロジェクト'))}
-          {item('プロジェクトを複製', () => useApp.getState().duplicateCurrentProject())}
-          {item('プロジェクトを削除…', () => {
-            if (confirm('このプロジェクトを削除しますか？（元に戻せません）'))
+          {item("新規プロジェクト", () => onNewProject?.())}
+          {item("プロジェクト設定", () => onSettings?.())}
+          {item("プロジェクトを複製", () =>
+            useApp.getState().duplicateCurrentProject(),
+          )}
+          {item("プロジェクトを削除…", () => {
+            if (confirm("このプロジェクトを削除しますか？（元に戻せません）"))
               useApp.getState().deleteCurrentProject();
           })}
           <div className="menu-sep" />
-          {item('4,000ノード生成（デモ）', () => useApp.getState().generateDemo())}
+          {item("4,000ノード生成（デモ）", () =>
+            useApp.getState().generateDemo(),
+          )}
         </div>
       ) : null}
     </div>
   );
 }
 
-export function Header() {
+export function Header({
+  onNewProject,
+  onSettings,
+}: {
+  onNewProject?: () => void;
+  onSettings?: () => void;
+}) {
   const saveStatus = useApp((s) => s.saveStatus);
-  const runners = useApp((s) => s.runners);
-  const cpHighlight = useApp((s) => s.cpHighlight);
   // Undo/Redo 可否は zundo の temporal ストアから購読（§2.3）。
   const canUndo = useStore(useApp.temporal, (s) => s.pastStates.length > 0);
   const canRedo = useStore(useApp.temporal, (s) => s.futureStates.length > 0);
@@ -162,35 +189,51 @@ export function Header() {
   const doExportMspdi = () => {
     const s = useApp.getState();
     const doc = s.toDoc();
-    const cpm = selectCpm(doc.tasks, doc.dependencies, doc.project.dataDate, selectActiveCalendar(s));
-    const blob = new Blob([toMspdi(doc, cpm)], { type: 'application/xml' });
-    const a = document.createElement('a');
+    const cpm = selectCpm(
+      doc.tasks,
+      doc.dependencies,
+      doc.project.dataDate,
+      selectActiveCalendar(s),
+    );
+    const blob = new Blob([toMspdi(doc, cpm)], { type: "application/xml" });
+    const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `${doc.project.name}-${new Date().toISOString().slice(0, 10)}.mspdi.xml`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
   const doImportMspdi = (file: File) => {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const { tasks, dependencies } = fromMspdi(reader.result as string);
         if (!tasks.length) {
-          useApp.getState().showToast('MSPDIにタスクが見つかりません', true);
+          useApp.getState().showToast("MSPDIにタスクが見つかりません", true);
           return;
         }
-        const doc = emptyDoc('MSPDI取込 ' + new Date().toISOString().slice(0, 10));
+        const doc = emptyDoc(
+          "MSPDI取込 " + new Date().toISOString().slice(0, 10),
+        );
         doc.tasks = tasks;
         doc.dependencies = dependencies;
         const v = validateDoc(doc);
         if (!v.ok) {
-          useApp.getState().showToast('取込検証エラー: ' + v.errors.slice(0, 2).join(' / '), true);
+          useApp
+            .getState()
+            .showToast(
+              "取込検証エラー: " + v.errors.slice(0, 2).join(" / "),
+              true,
+            );
           return;
         }
+        await flushPersistence();
         useApp.getState().loadDoc(doc);
         useApp.getState().layoutAll(); // 位置(0,0)を左→右DAGへ整列
-        useApp.getState().showToast('MSPDIを取り込みました（' + tasks.length + 'タスク）');
+        useApp
+          .getState()
+          .showToast("MSPDIを取り込みました（" + tasks.length + "タスク）");
       } catch {
-        useApp.getState().showToast('MSPDI解析に失敗しました', true);
+        useApp.getState().showToast("MSPDI解析に失敗しました", true);
       }
     };
     reader.readAsText(file);
@@ -198,66 +241,77 @@ export function Header() {
 
   const doExport = () => {
     const doc = useApp.getState().toDoc();
-    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
+    const blob = new Blob([JSON.stringify(doc, null, 2)], {
+      type: "application/json",
+    });
+    const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `${doc.project.name}-${new Date().toISOString().slice(0, 10)}.epcgraph.json`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
   const doImport = (file: File) => {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const doc = JSON.parse(reader.result as string);
         const v = validateDoc(doc);
         if (!v.ok) {
-          useApp.getState().showToast('インポート検証エラー: ' + v.errors.slice(0, 2).join(' / '), true);
+          useApp
+            .getState()
+            .showToast(
+              "インポート検証エラー: " + v.errors.slice(0, 2).join(" / "),
+              true,
+            );
           return;
         }
+        await flushPersistence();
         useApp.getState().loadDoc(doc);
         useApp.getState().fit(200);
-        useApp.getState().showToast('インポートしました（' + doc.tasks.length + 'タスク）');
+        useApp
+          .getState()
+          .showToast("インポートしました（" + doc.tasks.length + "タスク）");
       } catch {
-        useApp.getState().showToast('JSON解析に失敗しました', true);
+        useApp.getState().showToast("JSON解析に失敗しました", true);
       }
     };
     reader.readAsText(file);
   };
 
   return (
-    <div className="header">
-      <span className="brand" title="C-Relations — EPC タスク依存グラフ">
-        <svg className="brand-mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-          <line x1="5" y1="7" x2="11" y2="15" />
-          <line x1="11" y1="15" x2="17" y2="7" />
-          <line x1="5" y1="7" x2="17" y2="7" />
-          <circle cx="5" cy="7" r="2.4" />
-          <circle cx="11" cy="15" r="2.4" />
-          <circle cx="17" cy="7" r="2.4" />
-        </svg>
-        <span className="brand-name">C-Relations</span>
+    <header className="header">
+      <span className="header-project-icon">
+        <Icon name="folder" size={17} />
       </span>
       <ProjectBar />
-      <CompletionSummary />
       <button
-        className={'btn' + (cpHighlight ? ' on' : '')}
-        onClick={() => useApp.getState().toggleCpHighlight()}
-        title="クリティカルパスを赤で強調（§2.11）"
-        data-testid="cp-toggle"
+        className="btn"
+        disabled={!canUndo}
+        onClick={() => useApp.getState().undo()}
       >
-        CP強調
+        ↶ 戻す
       </button>
-      <button className="btn primary" onClick={() => runners.createAtCenter?.()}>
-        ＋タスク (N)
-      </button>
-      <button className="btn" disabled={!canUndo} onClick={() => useApp.getState().undo()}>
-        ↶ Undo
-      </button>
-      <button className="btn" disabled={!canRedo} onClick={() => useApp.getState().redo()}>
-        Redo ↷
+      <button
+        className="btn"
+        disabled={!canRedo}
+        onClick={() => useApp.getState().redo()}
+      >
+        進む ↷
       </button>
       <span className="spacer" />
-      <ActionsMenu />
+      <button
+        className="icon-button header-search"
+        aria-label="タスクを検索"
+        title="タスクを検索"
+        onClick={() =>
+          window.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "k", metaKey: true }),
+          )
+        }
+      >
+        <Icon name="search" size={17} />
+      </button>
+      <ActionsMenu onNewProject={onNewProject} onSettings={onSettings} />
       <DataMenu
         onJsonExport={doExport}
         onJsonImport={() => fileRef.current?.click()}
@@ -268,27 +322,31 @@ export function Header() {
         ref={fileRef}
         type="file"
         accept=".json,.epcgraph.json"
-        style={{ display: 'none' }}
+        style={{ display: "none" }}
         onChange={(e) => {
           if (e.target.files?.[0]) doImport(e.target.files[0]);
-          e.target.value = '';
+          e.target.value = "";
         }}
       />
       <input
         ref={mspdiRef}
         type="file"
         accept=".xml,.mspdi.xml"
-        style={{ display: 'none' }}
+        style={{ display: "none" }}
         data-testid="mspdi-file"
         onChange={(e) => {
           if (e.target.files?.[0]) doImportMspdi(e.target.files[0]);
-          e.target.value = '';
+          e.target.value = "";
         }}
       />
-      <span className={'savebadge ' + saveStatus} data-testid="savebadge">
-        {saveStatus === 'saved' ? '保存済み ✓' : '保存中…'}
+      <span className={"savebadge " + saveStatus} data-testid="savebadge">
+        {saveStatus === "saved"
+          ? "このブラウザに保存済み"
+          : saveStatus === "error"
+            ? "保存できませんでした"
+            : "保存中…"}
       </span>
-    </div>
+    </header>
   );
 }
 
@@ -298,18 +356,23 @@ export function Breadcrumb() {
   const path = wbsPath(task.wbsCode);
   return (
     <div className="breadcrumb">
-      WBS:{' '}
+      WBS:{" "}
       {path.length
         ? path.map((p, i) => (
             <span key={p}>
-              {i > 0 ? ' › ' : ''}
-              <span className="crumb" onClick={() => useApp.getState().setFilter({ wbsPrefixes: [p] })}>
+              {i > 0 ? " › " : ""}
+              <span
+                className="crumb"
+                onClick={() =>
+                  useApp.getState().setFilter({ wbsPrefixes: [p] })
+                }
+              >
                 {p}
               </span>
             </span>
           ))
-        : '（ルート直下）'}
-      {' › '}
+        : "（ルート直下）"}
+      {" › "}
       <b>{task.name}</b>
     </div>
   );

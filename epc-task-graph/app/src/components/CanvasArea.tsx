@@ -303,7 +303,7 @@ export function CanvasArea() {
       const id = st.selection.taskId;
       if (!id) return;
       const t = st.tasks.find((x) => x.id === id);
-      if (t) rf.setCenter(t.position.x, t.position.y, { zoom: rf.getZoom(), duration: 400 });
+      if (t) rf.setCenter(t.position.x + 93, t.position.y + 40, { zoom: Math.max(0.85, rf.getZoom()), duration: 400 });
     });
     s.setRunner('layoutVisible', () => {
       const der = lastDerived.current;
@@ -333,6 +333,7 @@ export function CanvasArea() {
   // キーボード（§2.2）。インライン編集中は無効化。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if(document.querySelector('dialog[open]')) return;
       const tag = ((e.target as HTMLElement).tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement).isContentEditable) return;
       const s = useApp.getState();

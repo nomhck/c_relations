@@ -6,3 +6,5 @@
 @import './styles/table.css'; /* テーブル/一括操作バー/セル/WBS日付サマリ */
 @import './styles/gantt.css'; /* ガント（軸/バー/ドラッグ） */
 @import './styles/search.css'; /* 検索パレット(Cmd/Ctrl+K) */
+
+@import './styles/workspace.css';

@@ -3,7 +3,7 @@
 // ============================================================================
 import { DISC_COLOR_ON, type Discipline, type Status, type TableColumnKey } from '../../domain';
 
-export const ROW_HEIGHT = 32; // 固定行高（§12.3.3。ガント左右ペインと共有する定数）。
+export const ROW_HEIGHT = 44; // 固定行高（§12.3.3。ガント左右ペインと共有する定数）。
 
 export interface ColumnMeta {
   label: string;
@@ -23,11 +23,11 @@ export const COLUMN_META: Record<TableColumnKey, ColumnMeta> = {
   status: { label: 'ステータス', width: 96, align: 'center', sortable: true },
   progress: { label: '進捗', width: 96, sortable: true, numeric: true },
   durationDays: { label: '日数', width: 64, align: 'right', sortable: true, numeric: true },
-  es: { label: 'ES', width: 104, align: 'center', sortable: true, numeric: true },
-  ef: { label: 'EF', width: 104, align: 'center', sortable: true, numeric: true },
-  ls: { label: 'LS', width: 104, align: 'center', sortable: true, numeric: true },
-  lf: { label: 'LF', width: 104, align: 'center', sortable: true, numeric: true },
-  totalFloat: { label: 'TF', width: 60, align: 'right', sortable: true, numeric: true },
+  es: { label: '開始予定', width: 104, align: 'center', sortable: true, numeric: true },
+  ef: { label: '終了予定', width: 104, align: 'center', sortable: true, numeric: true },
+  ls: { label: '最遅開始', width: 104, align: 'center', sortable: true, numeric: true },
+  lf: { label: '最遅終了', width: 104, align: 'center', sortable: true, numeric: true },
+  totalFloat: { label: '余裕日数', width: 90, align: 'right', sortable: true, numeric: true },
   critical: { label: 'CP', width: 44, align: 'center', sortable: true },
   deps: { label: '先行/後続', width: 96, align: 'center', sortable: false },
 };
