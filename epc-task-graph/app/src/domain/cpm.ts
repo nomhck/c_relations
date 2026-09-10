@@ -113,6 +113,17 @@ export function computeCpm(
 
   // 制約日（yyyy-mm-dd）→ 基準日からの暦日オフセット。SNET/FNLT で使用（§9.1 / Phase2）。
   const startDate = (projectStart || '').slice(0, 10) || '2026-01-01';
+  // 多数のタスクが同じ日付を参照するため、1回の計算内で日付文字列を共有する。
+  const dateCache = new Map<number, string>();
+  const dateAt = (offset: number): string => {
+    const day = Math.round(offset);
+    let date = dateCache.get(day);
+    if (date === undefined) {
+      date = addCalendarDays(startDate, day);
+      dateCache.set(day, date);
+    }
+    return date;
+  };
   const constraintOffset = (iso: string): number =>
     Math.round((parseISODate(iso) - parseISODate(startDate)) / 86400000);
 
@@ -127,7 +138,7 @@ export function computeCpm(
     if (linearCal) return true;
     const dow = new Date(baseMs + off * 86400000).getUTCDay();
     if (!wdSet.has(dow)) return false;
-    return !holSet.has(addCalendarDays(startDate, off));
+    return holSet.size === 0 || !holSet.has(dateAt(off));
   };
   const nextWorking = (off: number): number => {
     if (linearCal) return off;
@@ -286,10 +297,10 @@ export function computeCpm(
       lf: _lf,
       totalFloat: tf,
       isCritical: crit,
-      esDate: addCalendarDays(startDate, _es),
-      efDate: addCalendarDays(startDate, _ef),
-      lsDate: addCalendarDays(startDate, _ls),
-      lfDate: addCalendarDays(startDate, _lf),
+      esDate: dateAt(_es),
+      efDate: dateAt(_ef),
+      lsDate: dateAt(_ls),
+      lfDate: dateAt(_lf),
     });
   }
 
@@ -310,6 +321,6 @@ export function computeCpm(
     projectStart: 0,
     projectEnd,
     projectStartDate: startDate,
-    projectEndDate: addCalendarDays(startDate, projectEnd),
+    projectEndDate: dateAt(projectEnd),
   };
 }

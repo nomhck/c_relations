@@ -31,6 +31,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run unit tests
-        run: npm test
+        # Avoid CPU contention between performance tests on the shared runner.
+        run: npm test -- --no-file-parallelism
       - name: Check types and build for GitHub Pages
         run: npm run build -- --base=/c_relations/
